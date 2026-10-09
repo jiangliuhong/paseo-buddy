@@ -1,18 +1,12 @@
 const { app, BrowserWindow, ipcMain, screen, Menu } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
+const { compact, boundsFor, collapsedAnchor, resizedBounds } = require("./window-bounds.cjs");
+
 let win;
-const compact = { width: 190, height: 64 };
-const expanded = { width: 360, height: 380 };
+let positionTimer;
 const positionFile = () => path.join(app.getPath("userData"), "window-position.json");
 
-function clamp(value, min, max) { return Math.min(Math.max(value, min), max); }
-function boundsFor(size, x, y) {
-  const display = screen.getDisplayNearestPoint({ x, y }).workArea;
-  return { width: size.width, height: size.height,
-    x: clamp(x, display.x, display.x + Math.max(0, display.width - size.width)),
-    y: clamp(y, display.y, display.y + Math.max(0, display.height - size.height)) };
-}
 function readPosition() {
   try {
     const pos = JSON.parse(fs.readFileSync(positionFile(), "utf8"));
@@ -21,45 +15,89 @@ function readPosition() {
   const area = screen.getPrimaryDisplay().workArea;
   return { x: area.x + area.width - compact.width - 30, y: area.y + 30 };
 }
+
 function savePosition() {
   if (!win || win.isDestroyed()) return;
-  const [x, y] = win.getPosition();
-  try { fs.writeFileSync(positionFile(), JSON.stringify({ x, y })); } catch (error) {
+  const anchor = collapsedAnchor(win.getBounds());
+  try {
+    fs.mkdirSync(path.dirname(positionFile()), { recursive: true });
+    fs.writeFileSync(positionFile(), JSON.stringify(anchor));
+  } catch (error) {
     console.warn("Could not save window position:", error);
   }
 }
+
+function scheduleSavePosition() {
+  clearTimeout(positionTimer);
+  positionTimer = setTimeout(savePosition, 200);
+}
+
 function createWindow() {
-  const position = readPosition();
+  const pos = readPosition();
+  const area = screen.getDisplayNearestPoint(pos).workArea;
   win = new BrowserWindow({
-    ...boundsFor(compact, position.x, position.y),
-    frame: false, transparent: true, alwaysOnTop: true, resizable: false,
-    skipTaskbar: true, hasShadow: false, backgroundColor: "#00000000",
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true,
-      preload: path.join(__dirname, "preload.cjs") }
+    ...boundsFor(compact, pos.x, pos.y, area),
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    backgroundColor: "#00000000",
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      preload: path.join(__dirname, "preload.cjs"),
+    },
   });
+
   win.setAlwaysOnTop(true, "floating");
-  win.on("moved", savePosition);
+  win.on("moved", scheduleSavePosition);
+  win.on("close", () => {
+    clearTimeout(positionTimer);
+    savePosition();
+  });
+
+  // Provide a Quit action even when there is no Dock/taskbar entry.
+  win.webContents.on("context-menu", () => {
+    Menu.buildFromTemplate([
+      { label: "Show Paseo Buddy", click: () => win?.show() },
+      { type: "separator" },
+      { label: "Quit Paseo Buddy", role: "quit" },
+    ]).popup({ window: win });
+  });
+
+  // Desktop mock has no reason to navigate to external URLs.
+  win.webContents.on("will-navigate", (event) => event.preventDefault());
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.loadFile(path.join(__dirname, "dist/index.html"));
 }
+
 app.whenReady().then(() => {
-  // macOS menu provides a reliable Quit action even with a taskbar-hidden window.
-  const menu = Menu.buildFromTemplate([
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: "Paseo Buddy", submenu: [
-      { role: "about" }, { type: "separator" },
+      { role: "about" },
+      { type: "separator" },
       { label: "Show Window", click: () => win?.show() },
-      { role: "quit" }
+      { role: "quit" },
     ] },
-    { label: "Edit", submenu: [{ role: "copy" }, { role: "paste" }] }
-  ]);
-  Menu.setApplicationMenu(menu);
+    { label: "Edit", submenu: [{ role: "copy" }, { role: "paste" }] },
+  ]));
+
   ipcMain.on("buddy:expand", (event, value) => {
-    if (!win || event.sender !== win.webContents) return;
-    const target = value ? expanded : compact;
+    if (!win || win.isDestroyed() || event.sender !== win.webContents
+        || event.senderFrame !== win.webContents.mainFrame) return;
+
     const current = win.getBounds();
-    // Anchor to the right edge when resizing; clamp within the nearest display.
-    const desiredX = current.x + current.width - target.width;
-    win.setBounds(boundsFor(target, desiredX, current.y));
+    const area = screen.getDisplayNearestPoint({
+      x: current.x + current.width - 1,
+      y: current.y,
+    }).workArea;
+    win.setBounds(resizedBounds(current, value === true, area));
   });
+
   createWindow();
 });
+
 app.on("window-all-closed", () => app.quit());
