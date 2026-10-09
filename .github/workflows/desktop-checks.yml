@@ -1,0 +1,38 @@
+name: Desktop checks
+
+on:
+  push:
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/desktop-checks.yml"
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/desktop-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies (no Electron download required for static checks)
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Test window bounds
+        run: npm test
+      - name: Typecheck and build Vite UI
+        run: npm run build
+      - name: Check Electron main/preload syntax
+        run: |
+          node --check main.cjs
+          node --check preload.cjs
+          node --check window-bounds.cjs
