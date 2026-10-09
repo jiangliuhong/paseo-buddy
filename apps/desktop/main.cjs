@@ -1,10 +1,11 @@
 const { app, BrowserWindow, ipcMain, screen, Menu } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
-const { compact, boundsFor, collapsedAnchor, resizedBounds } = require("./window-bounds.cjs");
+const { compact, boundsFor, collapsedAnchor, resizedLayout } = require("./window-bounds.cjs");
 
 let win;
 let positionTimer;
+let placement = "right";
 const positionFile = () => path.join(app.getPath("userData"), "window-position.json");
 
 function readPosition() {
@@ -18,7 +19,7 @@ function readPosition() {
 
 function savePosition() {
   if (!win || win.isDestroyed()) return;
-  const anchor = collapsedAnchor(win.getBounds());
+  const anchor = collapsedAnchor(win.getBounds(), placement);
   try {
     fs.mkdirSync(path.dirname(positionFile()), { recursive: true });
     fs.writeFileSync(positionFile(), JSON.stringify(anchor));
@@ -68,7 +69,7 @@ function createWindow() {
     ]).popup({ window: win });
   });
 
-  // Desktop mock has no reason to navigate to external URLs.
+  // This local UI demo has no reason to navigate to external URLs.
   win.webContents.on("will-navigate", (event) => event.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.loadFile(path.join(__dirname, "dist/index.html"));
@@ -85,16 +86,21 @@ app.whenReady().then(() => {
     { label: "Edit", submenu: [{ role: "copy" }, { role: "paste" }] },
   ]));
 
-  ipcMain.on("buddy:expand", (event, value) => {
+  ipcMain.handle("buddy:expand", (event, value) => {
     if (!win || win.isDestroyed() || event.sender !== win.webContents
-        || event.senderFrame !== win.webContents.mainFrame) return;
+        || event.senderFrame !== win.webContents.mainFrame) {
+      throw new Error("Invalid IPC sender");
+    }
 
     const current = win.getBounds();
     const area = screen.getDisplayNearestPoint({
       x: current.x + current.width - 1,
       y: current.y,
     }).workArea;
-    win.setBounds(resizedBounds(current, value === true, area));
+    const layout = resizedLayout(current, value === true, area, placement);
+    placement = layout.placement;
+    win.setBounds(layout.bounds);
+    return { placement };
   });
 
   createWindow();
