@@ -1,11 +1,11 @@
 const { app, BrowserWindow, ipcMain, screen, Menu } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
-const { compact, boundsFor, collapsedAnchor, resizedLayout } = require("./window-bounds.cjs");
+const { compact, defaultPlacement, boundsFor, collapsedAnchor, resizedLayout } = require("./window-bounds.cjs");
 
 let win;
 let positionTimer;
-let placement = "right";
+let placement = defaultPlacement;
 const positionFile = () => path.join(app.getPath("userData"), "window-position.json");
 
 function readPosition() {
