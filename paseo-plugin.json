@@ -1,0 +1,7 @@
+{
+  "id": "paseo-buddy",
+  "description": "Daemon-side integration for the Paseo Buddy floating desktop companion",
+  "requirements": {
+    "paseo": ">=0.8.0"
+  }
+}
