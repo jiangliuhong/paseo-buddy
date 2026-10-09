@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Bot, Activity, X, CirclePlay } from "lucide-react";
 import "./style.css";
 
-type Placement = "left" | "right";
+type Placement = { horizontal: "left" | "right"; vertical: "above" | "below" };
 declare global {
   interface Window {
     buddy?: { expand: (value: boolean) => Promise<{ placement: Placement }> };
@@ -18,7 +18,7 @@ const demoAgents: Agent[] = [
 
 function App() {
   const [expanded, setExpanded] = useState(false);
-  const [placement, setPlacement] = useState<Placement>("right");
+  const [placement, setPlacement] = useState<Placement>({ horizontal: "right", vertical: "below" });
   const [busy, setBusy] = useState(false);
   const agents = demoAgents;
 
@@ -39,7 +39,7 @@ function App() {
     }
   }
 
-  return <main className={`shell ${placement}`}>
+  return <main className={`shell ${placement.horizontal} ${placement.vertical}`}>
     <div className="pill">
       <div className="drag" title="Drag to move"><Bot size={22}/></div>
       <div className="separator"/>
