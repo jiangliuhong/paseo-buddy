@@ -1,53 +1,62 @@
 # Paseo Buddy
 
-A lightweight floating desktop companion for monitoring active Paseo agents.
+A lightweight floating desktop companion for monitoring Paseo agents.
 
-> Status: project scaffold and architecture specification. The desktop overlay and live integration are not implemented yet.
+> Status: Electron floating-pill **UI prototype** available with three sample agents. The Paseo daemon plugin entry is currently a no-op. **No live Agent data, notifications, or conversation navigation yet.**
 
-## Vision
+## Preview the desktop pill (macOS)
 
-A small, always-on-top macOS pill inspired by the ChatGPT desktop launcher. It displays the number of actively running Paseo agents; clicking it opens a compact list of agents with workspace, status, and elapsed time.
+```sh
+git clone https://github.com/jiangliuhong/paseo-buddy.git
+cd paseo-buddy/apps/desktop
+npm install
+npm test
+npm run electron:start
+```
 
-## V1 scope
+Drag the robot side of the pill to move it, click the running count to expand/collapse the example agent list, and right-click the window to quit. See [desktop instructions](apps/desktop/README.md).
+
+## V1 target
 
 - Frameless, transparent, draggable, always-on-top desktop pill
-- Live count of actively executing agent turns
-- Popover listing running agents, with workspace and elapsed time
-- Distinct state for agents waiting for permission
+- Live count of actively executing Paseo turns
+- Popover listing running agents by workspace and duration
+- Separate display for permission-blocked agents
 - Notifications on completion or failure
-- Restore state after reconnect/restart
-- Open a Paseo conversation from the popover, subject to confirming a supported deep-link API
+- Recovery after reconnect/restart
+- Open a Paseo conversation from the popover where routing is supported
 
 ## Architecture
 
-The Paseo plugin executes inside a daemon subprocess. A separate desktop process is required for an operating-system-level floating window. The two communicate through an authenticated loopback channel.
+The Paseo plugin executes inside a daemon subprocess. The standalone Electron process owns the native floating window. A future authenticated loopback transport will keep them in sync.
 
 See [architecture](docs/architecture.md), [requirements](docs/requirements.md), and [development guide](docs/development.md).
 
-## Repository layout
+## Repository
 
 ```text
-paseo-plugin.json          Paseo plugin manifest
-index.server.ts            Daemon-side plugin entry
-server/                    Daemon-only event handling
-shared/                    Common state contracts
-apps/desktop/              Planned Electron desktop app
-docs/                      Architecture and development notes
+paseo-plugin.json             Paseo plugin manifest
+index.server.ts               No-op daemon plugin entry
+apps/desktop/                 Runnable Electron/React UI demo
+apps/desktop/window-bounds.cjs  Pure window geometry
+apps/desktop/tests/           Geometry regression tests
+.github/workflows/            Desktop static checks
+docs/                         Architecture and requirements
 ```
 
-## Install (after implementation)
+## Paseo integration (planned)
 
-Paseo supports installing directly from Git:
+Paseo can install directly from Git:
 
 ```sh
 paseo plugin add git:jiangliuhong/paseo-buddy
 ```
 
-Do not install this scaffold expecting a working desktop companion. The current plugin entry is intentionally a no-op until the event bridge is implemented.
+Do **not** install the plugin expecting a working companion yet; the server entry deliberately registers no handlers.
 
 ## Development
 
-See [docs/development.md](docs/development.md). Before implementing the runtime integration, generate a reference plugin with `paseo plugin init` and validate event payload types against the installed Paseo SDK.
+Run `npm run check` from `apps/desktop` to test UI geometry and compile the renderer. Actual macOS GUI behavior still requires a manual smoke test.
 
 ## License
 
