@@ -15,7 +15,7 @@ npm run electron:start
 
 The app builds the UI first, then opens an always-on-top white floating pill. Drag the robot side to move it. Click the counter to expand/collapse the example running-agent list. Right-click the window and choose **Quit Paseo Buddy** to exit; the macOS app menu also supports Command-Q.
 
-The collapsed pill's position is saved in Electron's userData folder and restored on restart. The panel expands toward the left to preserve the pill's right edge.
+The collapsed pill's position is saved in Electron's userData folder and restored on restart. The panel chooses a direction based on available screen space: left or right, above or below, while keeping the pill in place.
 
 ## Static checks
 
