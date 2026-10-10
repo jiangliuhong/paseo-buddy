@@ -7,9 +7,10 @@ import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ChildProcess } from "node:child_process";
+import { pruneOldCompanions } from "./companion-cache.js";
 import { execCommand, spawnProcess } from "@getpaseo/plugin/server";
 
-export const companionVersion = "0.1.2";
+export const companionVersion = "0.1.3";
 const releaseBase = `https://github.com/jiangliuhong/paseo-buddy/releases/download/v${companionVersion}`;
 const maxArchiveBytes = 200 * 1024 * 1024;
 const bundleId = "io.github.jiangliuhong.paseobuddy";
@@ -139,15 +140,20 @@ export function startDesktopCompanion(options: {
   ensure?: typeof ensureCompanion;
   spawn?: typeof spawnProcess;
   retryMs?: number;
+  cleanup?: typeof pruneOldCompanions;
+  cleanupDelayMs?: number;
   log?: (message: string) => void;
 } = {}) {
   const controller = new AbortController();
   let child: ChildProcess | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
+  let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+  let cleanupTask: Promise<void> | undefined;
   let wake: (() => void) | undefined;
   const log = options.log ?? console.log;
   const platform = options.platform ?? process.platform;
   const arch = options.arch ?? process.arch;
+  const cacheRoot = options.cacheRoot ?? path.join(homedir(), "Library/Caches/Paseo Buddy/companions");
   const ready = (async () => {
     if (!companionAsset(platform, arch)) {
       log("Paseo Buddy desktop auto-start is available only on local macOS daemons (arm64/x64).");
@@ -164,7 +170,7 @@ export function startDesktopCompanion(options: {
         log(`Preparing Paseo Buddy desktop ${companionVersion} for ${arch}.`);
         const executable = await (options.ensure ?? ensureCompanion)({
           arch, signal: controller.signal,
-          cacheRoot: options.cacheRoot ?? path.join(homedir(), "Library/Caches/Paseo Buddy/companions"),
+          cacheRoot,
         });
         controller.signal.throwIfAborted();
         child = (options.spawn ?? spawnProcess)(executable, [], {
@@ -175,6 +181,18 @@ export function startDesktopCompanion(options: {
         await new Promise<void>((resolve, reject) => { child!.once("spawn", resolve); child!.once("error", reject); });
         child.once("exit", code => { if (!controller.signal.aborted && code) log(`Paseo Buddy desktop exited with code ${code}.`); });
         log("Paseo Buddy desktop started. Disable the plugin to stop it.");
+        cleanupTimer = setTimeout(() => {
+          if (controller.signal.aborted || child?.signalCode !== null
+              || (child?.exitCode !== null && child?.exitCode !== 0)) return;
+          cleanupTask = (options.cleanup ?? pruneOldCompanions)({
+            cacheRoot, currentVersion: companionVersion, arch, signal: controller.signal,
+          }).then(removed => {
+            if (removed.length) log(`Removed old Paseo Buddy desktop caches: ${removed.join(", ")}.`);
+          }).catch(() => {
+            if (!controller.signal.aborted) log("Old companion cache cleanup was skipped; the current desktop remains available.");
+          });
+        }, options.cleanupDelayMs ?? 2000);
+        cleanupTimer.unref();
         return;
       } catch {
         if (controller.signal.aborted) return;
@@ -189,6 +207,7 @@ export function startDesktopCompanion(options: {
     async stop() {
       controller.abort();
       clearTimeout(retry);
+      clearTimeout(cleanupTimer);
       wake?.();
       await ready;
       if (child && child.exitCode === null && child.signalCode === null) {
@@ -198,6 +217,7 @@ export function startDesktopCompanion(options: {
           child!.kill("SIGTERM");
         });
       }
+      await cleanupTask;
     },
   };
 }

@@ -106,3 +106,9 @@ The settings entry is **Settings → Plugins → Paseo Buddy → 悬浮窗口**.
 Appearance settings require the matching v0.1.2 companion because v0.1.1 has no appearance-file reader. The plugin’s pinned companion version must match the release assets. Developing these controls used isolated tests without modifying the installed plugin.
 
 Validation: the installed Paseo compiler successfully compiled both new client and server entries without executing plugin code or changing trust settings. An isolated source-app test restored 60% opacity/125% size, updated live to 40%/150%, verified scaled expanded bounds, then resized to 75% and collapsed without moving its anchor. The first-launch default remained bottom-right. Automated tests cover schema bounds, hydration races, private mirror cleanup, atomic replacements, and scaled geometry.
+
+## Cache cleanup (v0.1.3)
+
+The companion cache is `~/Library/Caches/Paseo Buddy/companions`. Update/startup cleanup retains the current verified version and removes only marked older caches after confirming the new executable is running. Running older apps/helpers, current-version caches for another architecture, newer versions, symlinks, unknown files, and in-progress downloads are retained. A failed download/start or failed process scan leaves old caches intact.
+
+`/bin/ps` is invoked with fixed argv and no shell; process command lines are used transiently for in-use checks and are never logged or persisted. Cleanup is deferred until after window startup, cancelled on plugin stop, and reports only removed cache directory names. Automated tests use isolated temporary caches and process inventories. This behavior is included from v0.1.3.

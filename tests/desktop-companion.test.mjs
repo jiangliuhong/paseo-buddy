@@ -117,3 +117,26 @@ test('cleanup aborts while waiting for initial display settings',async()=>{
   const companion=startDesktopCompanion({platform:'darwin',arch:'arm64',log(){},displayReady:new Promise(()=>{}),ensure:async()=>{spawned=true;return '/never';}});
   await companion.stop();assert.equal(spawned,false);
 });
+
+test('successful startup schedules guarded old-cache cleanup without blocking the window',async()=>{
+ let cleared;const called=new Promise(r=>cleared=r);let options;
+ const companion=startDesktopCompanion({platform:'darwin',arch:'arm64',cacheRoot:'/private/cache',log(){},cleanupDelayMs:0,
+  ensure:async()=>'/verified/app',spawn:(_cmd,_args,opts)=>fakeChild(opts.signal),
+  cleanup:async opts=>{options=opts;cleared();return ['0.1.1-arm64'];},
+ });
+ await companion.ready;await called;assert.equal(options.cacheRoot,'/private/cache');assert.equal(options.currentVersion,companionVersion);
+ await companion.stop();
+});
+test('failed preparation never schedules destructive cache cleanup',async()=>{
+ let attempted;const first=new Promise(r=>attempted=r);let cleaned=false;
+ const companion=startDesktopCompanion({platform:'darwin',arch:'arm64',log(){},retryMs:1,cleanupDelayMs:0,
+  ensure:async()=>{attempted();throw Error('download failed');},cleanup:async()=>{cleaned=true;return [];},
+ });
+ await first;await companion.stop();assert.equal(cleaned,false);
+});
+test('stopping before the cleanup grace period cancels pruning',async()=>{
+ let cleaned=false;const companion=startDesktopCompanion({platform:'darwin',arch:'arm64',log(){},cleanupDelayMs:50,
+  ensure:async()=>'/verified/app',spawn:(_cmd,_args,opts)=>fakeChild(opts.signal),cleanup:async()=>{cleaned=true;return [];},
+ });
+ await companion.ready;await companion.stop();await new Promise(r=>setTimeout(r,70));assert.equal(cleaned,false);
+});
