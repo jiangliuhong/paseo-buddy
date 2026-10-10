@@ -6,11 +6,18 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.mjs"
+    "test": "npm run test --workspace @paseo-buddy/desktop",
+    "check": "npm run check --workspace @paseo-buddy/desktop",
+    "electron:start": "npm run electron:start --workspace @paseo-buddy/desktop",
+    "electron:dev": "npm run electron:dev --workspace @paseo-buddy/desktop",
+    "desktop:build": "npm run build --workspace @paseo-buddy/desktop"
   },
   "devDependencies": {
     "@getpaseo/plugin": "*",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.0"
-  }
+  },
+  "workspaces": [
+    "apps/desktop"
+  ]
 }
