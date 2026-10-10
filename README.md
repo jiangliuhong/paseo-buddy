@@ -6,13 +6,19 @@ A lightweight floating desktop companion for monitoring Paseo agents.
 
 ## Preview the desktop pill (macOS)
 
+Node.js 22+ and npm are required. Install dependencies **from the repository root** so npm installs the desktop workspace and its React/Vite/TypeScript type packages.
+
 ```sh
 git clone https://github.com/jiangliuhong/paseo-buddy.git
-cd paseo-buddy/apps/desktop
+cd paseo-buddy
 npm install
-npm test
+npm run check
 npm run electron:start
 ```
+
+You can also run `npm run electron:start` within `apps/desktop` after the root install.
+
+> If you previously installed dependencies before the workspace configuration was added, run `git pull` and `npm install` **at the repository root** again. A root-only install of an older revision does not install desktop development dependencies.
 
 Drag the robot side of the pill to move it, click the running count to expand/collapse the example agent list, and right-click the window to quit. See [desktop instructions](apps/desktop/README.md).
 
@@ -35,6 +41,7 @@ See [architecture](docs/architecture.md), [requirements](docs/requirements.md), 
 ## Repository
 
 ```text
+package.json                  npm workspaces: root + apps/desktop
 paseo-plugin.json             Paseo plugin manifest
 index.server.ts               No-op daemon plugin entry
 apps/desktop/                 Runnable Electron/React UI demo
@@ -56,7 +63,7 @@ Do **not** install the plugin expecting a working companion yet; the server entr
 
 ## Development
 
-Run `npm run check` from `apps/desktop` to test UI geometry and compile the renderer. Actual macOS GUI behavior still requires a manual smoke test.
+Run `npm run check` from the repository root to test UI geometry and compile the renderer. Actual macOS GUI behavior still requires a manual smoke test.
 
 ## License
 
