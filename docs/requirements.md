@@ -16,6 +16,7 @@ A lightweight macOS floating pill inspired by the ChatGPT desktop launcher. The 
 8. Open the selected conversation in Paseo when a supported route is available.
 9. Preserve overlay position; support a compact collapsed state.
 10. Never expose a bridge on a public network interface.
+11. Display completed-unread agents in green until Paseo marks them read, separately from red running counts. Opening Buddy must not mark them read.
 
 ## Acceptance scenarios
 

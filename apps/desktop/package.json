@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "build": "npm run runtime:build --prefix ../.. && tsc -b && vite build",
     "electron:dev": "npm run build && electron .",
     "electron:start": "npm run build && electron .",
     "test": "node --test tests/*.test.cjs",

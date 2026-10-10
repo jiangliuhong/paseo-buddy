@@ -2,36 +2,34 @@
 
 ## Components
 
-1. **Paseo daemon plugin** (`index.server.ts`, `server/`): subscribes to agent lifecycle events and builds a normalized state snapshot.
-2. **Local bridge** (planned): authenticated loopback WebSocket or IPC endpoint for snapshot + incremental updates. Bind to 127.0.0.1 only. Use per-session secret, validate origin, and never log secrets.
-3. **Desktop app** (`apps/desktop/`, planned): Electron main process manages transparent always-on-top window, notification permissions, process lifecycle, and safe external navigation. React renderer draws pill and popover.
-4. **Shared contracts** (`shared/`): typed AgentStatus, AgentSnapshot, and event envelopes.
+1. **Paseo daemon plugin** (`index.server.ts`, `server/`): exposes the read-only `agents.snapshot` RPC through the daemon-scoped SDK. The RPC follows page cursors and normalizes executing agents.
+2. **Desktop observation adapter** (`server/live-agents.ts`): Node-only public SDK subscription, running in the trusted Electron main process. It consumes snapshot and `agent_update` messages, clears state on disconnect, and reconnects with fresh endpoint/credential discovery.
+3. **Desktop app** (`apps/desktop/`): Electron owns the floating window and local daemon credential. Sandboxed React renderer receives normalized state via narrow IPC; it draws the live count and separate permission-wait list.
+4. **Shared contracts** (`shared/`): normalized running/waiting agent fields, connection state, and typed snapshot RPC.
+
+The desktop reads the daemon directly. There is no extra bridge listener or token discovery file. The plugin RPC provides the same normalization for Paseo-hosted callers; standalone desktop observation does not require plugin activation.
 
 ## State model
 
-- `running`: an active executing turn
-- `waiting_permission`: blocked awaiting user confirmation
-- `idle`: no executing turn
-- `completed` / `failed` / `cancelled`: terminal turn outcomes
+The daemon SDK statuses are `initializing`, `running`, `idle`, `error`, and `closed`. Buddy includes unarchived agents whose daemon status is `running`; pending permissions normalize to `waiting_permission` and are excluded from the running count. It also includes `idle`/`closed` agents with daemon `requiresAttention === true`, `attentionReason === "finished"`, and no pending permissions as `completed_unread`. The pill shows these in green, alongside red running counts when both exist. Read operations in Paseo clear attention and automatically remove the green count; Buddy never sends a read/clear-attention action. Directory observation includes all unarchived statuses so completed agents and read updates remain visible. Active turn identity and timestamp come only from `activeTurn`. Each row displays `${projectName} - ${workspaceName}` from the directory entry’s daemon-provided `project` placement, followed by agent `title` with provider fallback. Status-only updates preserve placement metadata for the same workspace; fresh snapshots and explicit null metadata replace it. Missing project metadata falls back to the basename of `cwd`, and missing workspace name displays `—`.
 
-Agent identity and turn identity are distinct. Completion notifications are deduplicated by daemon identity + agent ID + turn ID. Initial hydration never produces completion notifications.
+Completion notifications remain planned. A future implementation must use verified terminal events rather than infer completion from an idle transition, suppress hydration notifications, and deduplicate by daemon + agent + turn identity.
 
 ## Synchronization
 
-On connection: authenticate, request snapshot, then apply versioned events. On disconnect: show disconnected state and reconnect with backoff. On reconnect: replace local state with a fresh authoritative snapshot. Handle stale/duplicate events and daemon restarts explicitly.
+The SDK owned directory subscription supplies the initial snapshot before buffered updates. Replace the local map on snapshots; apply idempotent upserts/removals afterward. On connection loss, clear agents and display disconnected state. Recreate the client with exponential backoff (1–30 seconds), re-reading daemon endpoint/credential, and hydrate from a new authoritative snapshot. Reject truncated subscription snapshots to avoid a misleading partial count.
 
 ## Security
 
-Paseo plugins are trusted code running with daemon user privileges. Desktop bridge must not provide arbitrary command execution. Use loopback binding, a session token, input validation, and narrow message schemas. Electron renderer must use context isolation, sandboxing, and disabled Node integration.
+The main process accepts only explicit loopback TCP endpoints from the selected Paseo home's PID file. Its existing local credential stays in memory, is never sent over renderer IPC, and is never copied into Buddy storage or logs. No extra listening port, arbitrary command surface, or daemon settings modification is introduced. Electron uses context isolation, sandboxing, disabled Node integration, and main-frame sender validation for IPC.
 
 ## Packaging
 
-The repository root is a valid Paseo plugin source. Desktop app is packaged separately initially. Plugin-driven auto-start is a later feature, conditional on verified Paseo lifecycle support and user consent.
+The repository root is a valid Paseo plugin source. The desktop app is packaged separately as macOS DMG/ZIP downloads. Its renderer and bundled SDK adapter are staged under `build/desktop`; packaged main-process imports remain inside the application. Plugin-driven auto-start is a later feature, conditional on verified Paseo lifecycle support and user consent.
 
-## Implementation milestones
+## Remaining V1 work
 
-1. Verify plugin SDK types and build a lifecycle adapter with tests.
-2. Implement authenticated bridge and snapshot reconciliation.
-3. Build macOS pill/popover with mock state.
-4. Integrate live state and notifications.
-5. Package, test, and document installation.
+- Completion/failure notifications with verified lifecycle identities and deduplication
+- Supported conversation navigation
+- Real daemon restart/permission/turn-transition acceptance tests
+- Apple Developer signing/notarization and additional native window acceptance tests

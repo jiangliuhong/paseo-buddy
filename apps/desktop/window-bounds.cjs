@@ -2,8 +2,8 @@
  * Pure geometry helpers for a floating pill and expanding agent popover.
  * The collapsed pill stays anchored while the panel opens in available space.
  */
-const compact = Object.freeze({ width: 190, height: 64 });
-const expanded = Object.freeze({ width: 360, height: 380 });
+const compact = Object.freeze({ width: 104, height: 52 });
+const expanded = Object.freeze({ width: 320, height: 340 });
 const defaultPlacement = Object.freeze({ horizontal: "right", vertical: "below" });
 
 function clamp(value, min, max) {

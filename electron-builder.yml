@@ -1,0 +1,33 @@
+appId: io.github.jiangliuhong.paseobuddy
+productName: Paseo Buddy
+electronVersion: 35.7.5
+asar: true
+directories:
+  app: build/desktop
+  output: release
+  buildResources: assets
+files:
+  - "**/*"
+artifactName: "Paseo-Buddy-${version}-macOS-${arch}.${ext}"
+mac:
+  target:
+    - dmg
+    - zip
+  icon: assets/icon.png
+  category: public.app-category.developer-tools
+  identity: "-"
+  hardenedRuntime: false
+  extendInfo:
+    LSUIElement: true
+    NSHighResolutionCapable: true
+dmg:
+  title: Paseo Buddy
+  contents:
+    - x: 130
+      y: 160
+      type: file
+    - x: 410
+      y: 160
+      type: link
+      path: /Applications
+publish: null

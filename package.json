@@ -1,23 +1,32 @@
 {
   "name": "paseo-buddy",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Floating desktop companion for Paseo agents",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "npm run test --workspace @paseo-buddy/desktop",
-    "check": "npm run check --workspace @paseo-buddy/desktop",
+    "test": "npm run runtime:build && node --test tests/*.test.mjs && npm run test --workspace @paseo-buddy/desktop",
+    "check": "npm run typecheck && npm run test && npm run build --workspace @paseo-buddy/desktop",
     "electron:start": "npm run electron:start --workspace @paseo-buddy/desktop",
     "electron:dev": "npm run electron:dev --workspace @paseo-buddy/desktop",
-    "desktop:build": "npm run build --workspace @paseo-buddy/desktop"
+    "desktop:build": "npm run build --workspace @paseo-buddy/desktop",
+    "runtime:build": "tsc -p tsconfig.runtime.json",
+    "desktop:stage": "npm run desktop:build && node scripts/stage-desktop.mjs && node scripts/verify-desktop-stage.mjs",
+    "desktop:package": "npm run desktop:stage && electron-builder --config electron-builder.yml --mac --publish never"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "*",
+    "@getpaseo/plugin": "0.11.1",
     "@types/node": "^22.0.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.25.12",
     "typescript": "^5.9.0"
   },
   "workspaces": [
     "apps/desktop"
-  ]
+  ],
+  "dependencies": {
+    "@getpaseo/client": "0.11.1",
+    "zod": "^4.4.3"
+  }
 }

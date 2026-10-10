@@ -1,8 +1,16 @@
 const { app, BrowserWindow, ipcMain, screen, Menu } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
+const { pathToFileURL } = require("node:url");
 const { compact, defaultPlacement, boundsFor, collapsedAnchor, resizedLayout } = require("./window-bounds.cjs");
 
+const { readPaseoConfig } = require("./paseo-connection.cjs");
+const { createGesture } = require("./window-drag.cjs");
+let gesture;
+let dragTimer;
+let isExpanded = false;
+let liveAgents;
+let agentState = { connection: "connecting", agents: [] };
 let win;
 let positionTimer;
 let placement = defaultPlacement;
@@ -35,13 +43,17 @@ function scheduleSavePosition() {
 
 function createWindow() {
   const pos = readPosition();
-  const area = screen.getDisplayNearestPoint(pos).workArea;
+  const area = screen.getDisplayNearestPoint(pos).bounds;
   win = new BrowserWindow({
     ...boundsFor(compact, pos.x, pos.y, area),
+    show: false,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
+    // Disable AppKit work-area clamping; our geometry keeps the window on screen.
+    enableLargerThanScreen: true,
+    acceptFirstMouse: true,
     skipTaskbar: true,
     hasShadow: false,
     backgroundColor: "#00000000",
@@ -53,10 +65,13 @@ function createWindow() {
     },
   });
 
-  win.setAlwaysOnTop(true, "floating");
+  win.setAlwaysOnTop(true, "pop-up-menu");
+  win.once("ready-to-show", () => win.showInactive());
   win.on("moved", scheduleSavePosition);
   win.on("close", () => {
     clearTimeout(positionTimer);
+    clearInterval(dragTimer);
+    gesture = undefined;
     savePosition();
   });
 
@@ -69,13 +84,15 @@ function createWindow() {
     ]).popup({ window: win });
   });
 
-  // This local UI demo has no reason to navigate to external URLs.
+  // The monitoring UI has no reason to navigate to external URLs.
   win.webContents.on("will-navigate", (event) => event.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.loadFile(path.join(__dirname, "dist/index.html"));
 }
 
 app.whenReady().then(() => {
+  // skipTaskbar alone does not hide the macOS application icon.
+  if (process.platform === "darwin") app.dock?.hide();
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: "Paseo Buddy", submenu: [
       { role: "about" },
@@ -85,6 +102,38 @@ app.whenReady().then(() => {
     ] },
     { label: "Edit", submenu: [{ role: "copy" }, { role: "paste" }] },
   ]));
+
+  const validateSender = (event) => {
+    if (!win || win.isDestroyed() || event.sender !== win.webContents
+        || event.senderFrame !== win.webContents.mainFrame) throw new Error("Invalid IPC sender");
+  };
+  const moveGesture = () => {
+    if (!gesture || !win || win.isDestroyed()) return;
+    const cursor = screen.getCursorScreenPoint();
+    const area = screen.getDisplayNearestPoint(cursor).bounds;
+    const layout = gesture.move(cursor, area, isExpanded);
+    if (!layout) return;
+    const changed = placement.horizontal !== layout.placement.horizontal
+      || placement.vertical !== layout.placement.vertical;
+    placement = layout.placement;
+    win.setBounds(layout.bounds);
+    if (changed) win.webContents.send("buddy:placement", placement);
+  };
+  ipcMain.handle("buddy:drag-start", (event) => {
+    validateSender(event);
+    clearInterval(dragTimer);
+    gesture = createGesture(screen.getCursorScreenPoint(), collapsedAnchor(win.getBounds(), placement));
+    dragTimer = setInterval(moveGesture, 16);
+  });
+  ipcMain.handle("buddy:drag-end", (event) => {
+    validateSender(event);
+    moveGesture();
+    const dragged = gesture?.dragged ?? false;
+    clearInterval(dragTimer);
+    gesture = undefined;
+    if (dragged) scheduleSavePosition();
+    return { dragged };
+  });
 
   ipcMain.handle("buddy:expand", (event, value) => {
     if (!win || win.isDestroyed() || event.sender !== win.webContents
@@ -96,14 +145,37 @@ app.whenReady().then(() => {
     const area = screen.getDisplayNearestPoint({
       x: current.x + current.width - 1,
       y: current.y,
-    }).workArea;
-    const layout = resizedLayout(current, value === true, area, placement);
+    }).bounds;
+    isExpanded = value === true;
+    const layout = resizedLayout(current, isExpanded, area, placement);
     placement = layout.placement;
     win.setBounds(layout.bounds);
     return { placement };
   });
 
+  ipcMain.handle("buddy:agents", (event) => {
+    if (!win || event.sender !== win.webContents
+        || event.senderFrame !== win.webContents.mainFrame) throw new Error("Invalid IPC sender");
+    return agentState;
+  });
   createWindow();
+  const runtime = app.isPackaged
+    ? pathToFileURL(path.join(__dirname, "runtime/live-agents.mjs")).href
+    : pathToFileURL(path.join(__dirname, "../../build/server/live-agents.js")).href;
+  import(runtime).then(({ startLiveAgents }) => {
+    liveAgents = startLiveAgents({
+      config: readPaseoConfig,
+      publish(state) {
+        agentState = state;
+        if (win && !win.isDestroyed()) win.webContents.send("buddy:agents-changed", state);
+      },
+    });
+  }).catch(() => {
+    agentState = { connection: "disconnected", agents: [] };
+    if (win && !win.isDestroyed()) win.webContents.send("buddy:agents-changed", agentState);
+  });
 });
 
 app.on("window-all-closed", () => app.quit());
+
+app.on("before-quit", () => { void liveAgents?.stop(); });

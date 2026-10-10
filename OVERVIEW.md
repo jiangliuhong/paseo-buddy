@@ -1,0 +1,5 @@
+Paseo Buddy is a macOS floating companion for monitoring Paseo agents. The desktop app shows running agents in red, completed unread agents in green, and permission-blocked agents in a separate list. Each row shows the project, workspace, agent name, and available turn duration. The pill can be dragged anywhere on screen, stays out of the Dock, and opens its list when clicked.
+
+The daemon plugin exposes a read-only agent snapshot RPC. The floating window runs in a separate desktop application and must be started independently. The desktop application reads the local daemon directly, so it does not require this plugin to be enabled.
+
+Paseo 0.11.1 or later and macOS are required. The desktop app discovers the daemon through the selected Paseo home and supports explicit loopback TCP endpoints. It reads the daemon's existing local credential in its main process, keeps it in memory, and never sends it to the renderer. Read status remains controlled by Paseo; opening Buddy does not mark agents read.
