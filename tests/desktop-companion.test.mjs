@@ -118,13 +118,18 @@ test('cleanup aborts while waiting for initial display settings',async()=>{
   await companion.stop();assert.equal(spawned,false);
 });
 
-test('successful startup schedules guarded old-cache cleanup without blocking the window',async()=>{
+test('successful startup schedules guarded old-cache cleanup without blocking the window',async(t)=>{
  let cleared;const called=new Promise(r=>cleared=r);let options;
+ // A fake child has no OS process handle; retain a bounded test deadline while
+ // awaiting the production cleanup timer, which deliberately does not keep Node alive.
+ let deadline;const timedOut=new Promise((_,reject)=>{deadline=setTimeout(()=>reject(Error('Cache cleanup was not scheduled')),1000);});
+ t.after(()=>clearTimeout(deadline));
  const companion=startDesktopCompanion({platform:'darwin',arch:'arm64',cacheRoot:'/private/cache',log(){},cleanupDelayMs:0,
   ensure:async()=>'/verified/app',spawn:(_cmd,_args,opts)=>fakeChild(opts.signal),
   cleanup:async opts=>{options=opts;cleared();return ['0.1.1-arm64'];},
  });
- await companion.ready;await called;assert.equal(options.cacheRoot,'/private/cache');assert.equal(options.currentVersion,companionVersion);
+ t.after(()=>companion.stop());
+ await companion.ready;await Promise.race([called,timedOut]);assert.equal(options.cacheRoot,'/private/cache');assert.equal(options.currentVersion,companionVersion);
  await companion.stop();
 });
 test('failed preparation never schedules destructive cache cleanup',async()=>{
