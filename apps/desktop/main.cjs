@@ -90,7 +90,22 @@ function createWindow() {
   win.loadFile(path.join(__dirname, "dist/index.html"));
 }
 
+// Every packaged launch uses the same per-user lock, including plugin reloads.
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
+app.on("second-instance", () => win?.showInactive());
+let parentTimer;
+const parentPid = Number(process.env.PASEO_BUDDY_PARENT_PID);
+if (Number.isSafeInteger(parentPid) && parentPid > 0) {
+  parentTimer = setInterval(() => {
+    try { process.kill(parentPid, 0); }
+    catch (error) { if (error.code === "ESRCH") app.quit(); }
+  }, 2000);
+  parentTimer.unref();
+}
+
 app.whenReady().then(() => {
+  if (!primaryInstance) return;
   // skipTaskbar alone does not hide the macOS application icon.
   if (process.platform === "darwin") app.dock?.hide();
   Menu.setApplicationMenu(Menu.buildFromTemplate([
@@ -178,4 +193,4 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => app.quit());
 
-app.on("before-quit", () => { void liveAgents?.stop(); });
+app.on("before-quit", () => { clearInterval(parentTimer); void liveAgents?.stop(); });

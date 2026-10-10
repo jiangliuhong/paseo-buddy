@@ -4,9 +4,19 @@ A lightweight floating desktop companion for monitoring Paseo agents.
 
 > Status: The Electron pill reads live local Paseo agent snapshots and updates through the official SDK. Running counts, completed-unread counts, permission waits, elapsed time, and reconnect are implemented. Completion notifications and conversation navigation are still planned.
 
-## Download the macOS preview
+## Install in Paseo (local macOS)
 
-[GitHub Releases](https://github.com/jiangliuhong/paseo-buddy/releases) provides Apple Silicon (`arm64`) and Intel (`x64`) DMG/ZIP packages. Start Paseo >=0.11.1 first, then launch Paseo Buddy. The app does not require Node.js or npm. The first release is an unsigned, unnotarized preview; see the release notes for first-launch instructions.
+In Paseo Settings → Plugins, enable plugins and install:
+
+```text
+git:jiangliuhong/paseo-buddy
+```
+
+On first enable, the plugin automatically downloads the matching macOS companion ZIP from the pinned GitHub release, verifies its checksum and app signature, and starts the floating pill. No manual DMG download is required. Disable the plugin to close its managed window; reload/enable it to start again. First launch downloads about 100 MB; later launches reuse the private cache.
+
+Requires Paseo >=0.11.1, npm for plugin dependency preparation, and a local macOS daemon in the logged-in desktop session. The app runs on the daemon machine. Remote hosts cannot start a window on your Mac. The preview uses ad-hoc signing and is not Apple notarized.
+
+Standalone [DMG/ZIP downloads](https://github.com/jiangliuhong/paseo-buddy/releases) remain available for users who prefer to launch the app independently.
 
 ## Run from source (macOS)
 
@@ -70,7 +80,7 @@ Paseo can install directly from Git:
 paseo plugin add git:jiangliuhong/paseo-buddy
 ```
 
-The plugin requires Paseo >=0.11.1. SDK declarations were checked against `@getpaseo/plugin` and `@getpaseo/client` 0.11.1; a read-only live subscription was verified against local Paseo 0.11.2. Enable plugins manually in Paseo Settings if using the snapshot RPC. The standalone desktop monitor works without installing or enabling the plugin and must be launched separately.
+The plugin requires Paseo >=0.11.1. SDK declarations were checked against `@getpaseo/plugin` and `@getpaseo/client` 0.11.1; a read-only live subscription was verified against local Paseo 0.11.2. Enable plugins manually in Paseo Settings. Plugin startup owns the downloaded desktop process and cleanup stops it. The standalone desktop monitor can still run without the plugin.
 
 ## Development
 

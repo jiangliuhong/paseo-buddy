@@ -4,7 +4,7 @@ import contribute from '../build/index.server.js';
 
 test('plugin RPC queries the daemon-scoped SDK and follows snapshot pagination', async () => {
   let handler;
-  contribute({handle(contract, fn) {assert.equal(contract.name,'agents.snapshot');handler=fn;}});
+  contribute({handle(contract, fn) {assert.equal(contract.name,'agents.snapshot');handler=fn;}}, {startCompanion:()=>({ready:Promise.resolve(),async stop(){}})});
   const calls=[];
   const agent=(id)=>({id,cwd:'/work/project',title:id,provider:'codex',status:'running',pendingPermissions:[]});
   const result=await handler({}, {paseo:{agents:{async list(options) {
@@ -19,4 +19,10 @@ test('plugin RPC queries the daemon-scoped SDK and follows snapshot pagination',
   assert.equal(calls[1].page.cursor,'next');
   assert.equal(calls[0].subscribe,undefined);
   assert.equal(calls[0].filter.statuses,undefined);
+});
+
+test('plugin owns companion startup and stops it on disable/reload',async()=>{
+  let starts=0;let stops=0;
+  const cleanup=contribute({handle(){}},{startCompanion:()=>{starts++;return {ready:Promise.resolve(),async stop(){stops++;}};}});
+  assert.equal(starts,1);await cleanup();assert.equal(stops,1);
 });

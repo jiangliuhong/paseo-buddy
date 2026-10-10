@@ -15,7 +15,7 @@ npm install
 npm run typecheck
 ```
 
-The plugin exposes a read-only `agents.snapshot` RPC using the daemon-scoped public SDK. Installing it does not launch a floating window. Start the standalone desktop separately with `npm run electron:start`.
+The plugin exposes a read-only `agents.snapshot` RPC using the daemon-scoped public SDK. On local macOS it also downloads and launches its lifecycle-owned companion. Source development can still launch the desktop separately with `npm run electron:start`.
 
 ## Verified integration
 
@@ -27,7 +27,7 @@ The plugin exposes a read-only `agents.snapshot` RPC using the daemon-scoped pub
 - The public SDK's `authHeader` Bearer compatibility path was verified against the installed daemon. The credential stays in memory, never enters renderer IPC, and is re-read for each reconnect.
 - Buddy recreates its SDK client after disconnects with backoff from 1 second to 30 seconds. Connection health is checked once per second. The disconnected UI clears stale agents and displays `—` for the count.
 - Truncated subscription snapshots are rejected rather than showing a partial count. The plugin snapshot RPC follows all returned page cursors.
-- Notifications, conversation navigation, plugin-driven launch, and signed packaging remain unimplemented.
+- Notifications, conversation navigation, Apple Developer signing, and notarization remain unimplemented.
 
 Official SDK behavior: [subscriptions and reconnect](https://paseo.sh/docs/sdk/events).
 
@@ -90,3 +90,7 @@ Unread semantics were checked against the installed Paseo 0.11.2 attention proje
 Name previews use `src/name-tooltip.tsx` rather than native `title` delays. Only truncated names activate the preview (120ms hover, immediate keyboard focus). A body portal avoids clipping by the scrolling agent list; measured placement keeps the preview within the window, including when the panel opens above the pill.
 
 An isolated Electron renderer check with stable fixture data verified hover previews within 170ms (120ms configured delay), exact full text, viewport bounds, immediate focused-label previews, and Escape/list-scroll dismissal.
+
+Companion bootstrap tests inject downloads and child processes so `npm run check` never installs or launches software. `contribute()` returns async cleanup that stops the owned child. The default bootstrap uses the pinned release, cancellable streaming SHA-256 verification, macOS app validation, and fixed executable argv. A managed app receives only a narrow environment, and monitors `PASEO_BUDDY_PARENT_PID` to avoid an orphan after daemon/plugin crashes.
+
+The v0.1.1 local native companion smoke test streamed and checksummed the built ZIP, extracted it with ditto, validated bundle ID/signature, opened a managed window connected to the real daemon, reused its cache without downloading again, confirmed a duplicate launch exited, and confirmed controller cleanup terminated its child. This test used a temporary cache and did not install a public Git plugin or modify Paseo trust settings.

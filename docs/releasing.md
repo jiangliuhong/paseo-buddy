@@ -1,6 +1,6 @@
 # Releasing Paseo Buddy
 
-The source repository contains a Paseo daemon plugin and a standalone macOS desktop app. A plugin installation does not start the desktop app.
+The source repository contains a Paseo daemon plugin and a standalone macOS desktop app. On macOS, enabling the plugin starts its lifecycle-owned companion automatically. The binary version in `server/desktop-companion.ts` must match the release assets and checksum manifest.
 
 ## Verify and package
 
@@ -25,7 +25,7 @@ The current configuration uses ad-hoc signing so the app has a consistent local 
 
 Keep root and desktop package versions aligned, update the lockfile, and write release notes before tagging. A `v*` tag triggers `.github/workflows/release.yml`, which runs verification, packages both macOS architectures, writes checksums, and publishes a prerelease with those assets. `workflow_dispatch` builds downloadable workflow artifacts without creating a release.
 
-The workflow currently uses `docs/releases/v0.1.0.md` as its notes file. Update that file selection for future release versions. `contents: write` is restricted to the final publishing job; packaging has read-only repository permission.
+The workflow reads `docs/releases/${version}.md` for its notes. Create that version’s file before tagging. `contents: write` is restricted to the final publishing job; packaging has read-only repository permission.
 
 ## Git-source plugin
 
@@ -34,7 +34,7 @@ The manifest's preparation command runs `npm ci --omit=dev --ignore-scripts --wo
 Users can install the Git source with:
 
 ```sh
-paseo plugin add git:jiangliuhong/paseo-buddy --ref v0.1.0
+paseo plugin add git:jiangliuhong/paseo-buddy --ref v0.1.1
 ```
 
 The official plugin registry is a separate reviewed listing, not created automatically by a GitHub Release. Registry submission requires a pinned repository revision and `OVERVIEW.md`.

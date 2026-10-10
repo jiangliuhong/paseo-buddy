@@ -55,4 +55,4 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" release/*.dmg release/*.zip release/SHA256SUMS.txt \
             --verify-tag --prerelease --title "Paseo Buddy $GITHUB_REF_NAME" \
-            --notes-file docs/releases/v0.1.0.md
+            --notes-file "docs/releases/${GITHUB_REF_NAME#v}.md"

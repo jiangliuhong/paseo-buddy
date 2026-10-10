@@ -1,9 +1,10 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { agentsSnapshotRpc } from "./shared/agents.js";
+import { startDesktopCompanion } from "./server/desktop-companion.js";
 import { AgentState } from "./server/agent-state.js";
 
-/** A read-only RPC using the daemon-scoped public SDK supplied by Paseo. */
-export default function contribute(server: PluginServerContext) {
+/** Read-only snapshots plus lifecycle-owned startup of the verified desktop companion. */
+export default function contribute(server: PluginServerContext, dependencies = { startCompanion: startDesktopCompanion }) {
   server.handle(agentsSnapshotRpc, async (_input, { paseo }) => {
     const state = new AgentState();
     const agents = [];
@@ -20,5 +21,6 @@ export default function contribute(server: PluginServerContext) {
     state.replaceEntries(agents);
     return { agents: state.snapshot() };
   });
-  return () => {};
+  const companion = dependencies.startCompanion();
+  return () => companion.stop();
 }

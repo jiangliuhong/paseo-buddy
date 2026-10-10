@@ -36,7 +36,7 @@ This runs agent state/reconnect and window geometry regression tests, TypeScript
 
 - No completion notifications or conversation navigation yet.
 - Requires a loopback TCP daemon endpoint in `paseo.pid`; Unix sockets and public bindings are unsupported.
-- No packaged daemon launch or automatic plugin-driven desktop startup.
+- Automatic companion launch is supported only for local macOS daemons in the logged-in desktop session.
 - Frameless/transparent windows may require tuning for focus, multi-display, Spaces and full-screen workflows.
 - DMG/ZIP packaging is available; Apple Developer signing and notarization remain unconfigured.
 
@@ -47,3 +47,5 @@ The pill shows running agents in red and completed unread agents in green; both 
 Truncated project/workspace and agent names show their full text in a custom preview after 120ms of hover. Keyboard focus shows it immediately. Escape, scrolling the list, or leaving the preview dismisses it. The preview wraps within the window and supports scrolling for very long names.
 
 To produce standalone macOS packages, run `npm run desktop:package -- --arm64 --x64` from the repository root. See [release instructions](../../docs/releasing.md).
+
+When started by the plugin, the app is single-instance and exits if its plugin parent disappears. Disabling the plugin closes the child it owns. Source/standalone launches remain available.
