@@ -4,14 +4,21 @@ Electron + React desktop application for macOS. This is a **standalone mock UI**
 
 ## Local UI smoke test
 
-Requirements: Node.js 22+; macOS for native overlay testing.
+Requirements: Node.js 22+, npm, and macOS for native overlay testing.
+
+From the repository root:
 
 ```sh
-cd apps/desktop
 npm install
-npm test
+npm run check
 npm run electron:start
 ```
+
+The root `package.json` declares `apps/desktop` as an npm workspace, so running `npm install` at the root installs desktop dependencies, including `@types/react`, `react-dom`, `lucide-react`, `vite`, and their TypeScript declarations.
+
+If you are already in `apps/desktop`, `npm run electron:start` also works after installing workspace dependencies.
+
+If upgrading from a version without workspaces, run `git pull && npm install` from the repository root. Confirm resolution with `npm ls react vite @types/react --workspace @paseo-buddy/desktop`.
 
 The app builds the UI first, then opens an always-on-top white floating pill. Drag the robot side to move it. Click the counter to expand/collapse the example running-agent list. Right-click the window and choose **Quit Paseo Buddy** to exit; the macOS app menu also supports Command-Q.
 
@@ -23,7 +30,7 @@ The collapsed pill's position is saved in Electron's userData folder and restore
 npm run check
 ```
 
-This runs window geometry regression tests, TypeScript checking and the Vite build. The CI workflow also validates JavaScript syntax. **Neither this build nor CI replaces a macOS GUI test.**
+This runs window geometry regression tests, TypeScript checking and the Vite build. CI performs a root-level fresh dependency install as well. **Neither this build nor CI replaces a macOS GUI test.**
 
 ## Known limitations
 
