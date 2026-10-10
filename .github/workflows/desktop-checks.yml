@@ -3,10 +3,12 @@ name: Desktop checks
 on:
   push:
     paths:
+      - "package.json"
       - "apps/desktop/**"
       - ".github/workflows/desktop-checks.yml"
   pull_request:
     paths:
+      - "package.json"
       - "apps/desktop/**"
       - ".github/workflows/desktop-checks.yml"
   workflow_dispatch:
@@ -17,22 +19,22 @@ permissions:
 jobs:
   desktop:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install dependencies (no Electron download required for static checks)
-        run: npm install --ignore-scripts --no-audit --no-fund
-      - name: Test window bounds
+      - name: Install dependencies at the repository root (fresh clone)
+        run: npm install --ignore-scripts --include=dev --no-audit --no-fund
+      - name: Verify desktop workspace dependencies and types
+        run: |
+          npm ls react react-dom lucide-react vite @types/react @types/react-dom --workspace @paseo-buddy/desktop
+      - name: Run desktop tests
         run: npm test
-      - name: Typecheck and build Vite UI
-        run: npm run build
+      - name: Typecheck and build Vite UI from root
+        run: npm run desktop:build
       - name: Check Electron main/preload syntax
         run: |
-          node --check main.cjs
-          node --check preload.cjs
-          node --check window-bounds.cjs
+          node --check apps/desktop/main.cjs
+          node --check apps/desktop/preload.cjs
+          node --check apps/desktop/window-bounds.cjs
