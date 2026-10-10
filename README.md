@@ -1,99 +1,23 @@
 # Paseo Buddy
 
-A lightweight floating desktop companion for monitoring Paseo agents.
+A lightweight macOS floating companion for Paseo agents. Red numbers show running agents; green numbers show completed agents that remain unread in Paseo.
 
-> Status: The Electron pill reads live local Paseo agent snapshots and updates through the official SDK. Running counts, completed-unread counts, permission waits, elapsed time, and reconnect are implemented. Completion notifications and conversation navigation are still planned.
+Click the pill to view project, workspace, agent name, status, and elapsed time. Drag anywhere to move it. The window stays out of the Dock, remembers its position, and supports opacity and size controls under **Settings → Plugins → Paseo Buddy → 悬浮窗口**.
 
-## Install in Paseo (local macOS)
+## Installation
 
-In Paseo Settings → Plugins, enable plugins and install:
+Requires **Paseo ≥ 0.11.1**, **npm**, and a local macOS daemon running in the logged-in desktop session.
+
+Open **Paseo Settings → Plugins**, enable plugins, paste the following into **Plugin source**, and select **Install plugin**:
 
 ```text
 git:jiangliuhong/paseo-buddy
 ```
 
-On first enable, the plugin automatically downloads the matching macOS companion ZIP from the pinned GitHub release, verifies its checksum and app signature, and starts the floating pill. No manual DMG download is required. Disable the plugin to close its managed window; reload/enable it to start again. First launch downloads about 100 MB; later launches reuse the private cache.
-
-Requires Paseo >=0.11.1, npm for plugin dependency preparation, and a local macOS daemon in the logged-in desktop session. The app runs on the daemon machine. Remote hosts cannot start a window on your Mac. The preview uses ad-hoc signing and is not Apple notarized.
-
-Standalone [DMG/ZIP downloads](https://github.com/jiangliuhong/paseo-buddy/releases) remain available for users who prefer to launch the app independently.
-
-## Appearance settings (v0.1.2)
-
-The plugin adds **Settings → Plugins → Paseo Buddy → 悬浮窗口**. Set opacity from 30% to 100% and choose 75%, 100%, 125%, or 150% size. Saving updates the managed floating window live; settings survive plugin/daemon restarts. Existing window positions are preserved when resizing.
-
-These controls require the v0.1.2 plugin and matching companion. Upgrade a v0.1.1 installation with `paseo plugin update paseo-buddy`; the plugin obtains the matching desktop program automatically.
-
-## Run from source (macOS)
-
-Node.js 22+ and npm are required. Install dependencies **from the repository root** so npm installs the desktop workspace and its React/Vite/TypeScript type packages.
-
-```sh
-git clone https://github.com/jiangliuhong/paseo-buddy.git
-cd paseo-buddy
-npm install
-npm run check
-npm run electron:start
-```
-
-You can also run `npm run electron:start` within `apps/desktop` after the root install.
-
-> If you previously installed dependencies before the workspace configuration was added, run `git pull` and `npm install` **at the repository root** again. A root-only install of an older revision does not install desktop development dependencies.
-
-If startup reports missing React declarations (`TS7016`) or missing `react-dom/client`, `lucide-react`, or Vite (`TS2307`), run `npm install --include=dev` from the repository root, then retry `npm run electron:start`. The desktop build requires development dependencies even when `NODE_ENV=production` or npm is configured to omit them.
-
-The compact 88 × 36 px pill stays out of the macOS Dock and appears without taking focus. Drag anywhere on the pill to move it, click anywhere to expand/collapse the live agent list, and right-click the window to quit. Running counts turn red while positive; completed-unread counts appear in green and clear when the agent is read in Paseo; the pill can be dragged to the screen bottom and opens its list upward there. Truncated names show a full-text preview after 120ms of hover, or immediately on keyboard focus. See [desktop instructions](apps/desktop/README.md).
-
-## V1 target
-
-- Frameless, transparent, draggable, always-on-top desktop pill
-- Live count of actively executing Paseo turns
-- Popover listing project name, workspace name, agent name, and duration
-- Separate display for permission-blocked agents
-- Notifications on completion or failure
-- Recovery after reconnect/restart
-- Open a Paseo conversation from the popover where routing is supported
-
-## Architecture
-
-The Paseo plugin runs inside a daemon subprocess and exposes a read-only `agents.snapshot` RPC. The standalone Electron main process subscribes directly to the local daemon using `@getpaseo/client` and sends normalized state to its sandboxed renderer over IPC. No additional bridge port is opened.
-
-Start Paseo first. Buddy discovers its loopback endpoint from `~/.paseo/paseo.pid` and reads the existing `local-credential` only in the main process. Set `PASEO_HOME` for a different local daemon home, for example `PASEO_HOME=/path/to/home npm run electron:start`. The endpoint and credential are re-read after disconnects; Buddy never copies or persists the credential.
-
-See [architecture](docs/architecture.md), [requirements](docs/requirements.md), and [development guide](docs/development.md).
-
-## Repository
-
-```text
-package.json                  npm workspaces: root + apps/desktop
-paseo-plugin.json             Paseo plugin manifest
-index.server.ts               Read-only agent snapshot RPC
-apps/desktop/                 Live Electron/React overlay
-apps/desktop/window-bounds.cjs  Pure window geometry
-server/                       Agent normalization and SDK observation
-shared/                       Agent contracts and snapshot RPC schema
-tests/                        State and reconnect regression tests
-apps/desktop/tests/           Geometry and local connection tests
-.github/workflows/            Desktop static checks
-docs/                         Architecture and requirements
-```
-
-## Paseo integration
-
-Paseo can install directly from Git:
+Alternatively, install through the CLI:
 
 ```sh
 paseo plugin add git:jiangliuhong/paseo-buddy
 ```
 
-The plugin requires Paseo >=0.11.1. SDK declarations were checked against `@getpaseo/plugin` and `@getpaseo/client` 0.11.1; a read-only live subscription was verified against local Paseo 0.11.2. Enable plugins manually in Paseo Settings. Plugin startup owns the downloaded desktop process and cleanup stops it. The standalone desktop monitor can still run without the plugin.
-
-## Development
-
-Run `npm run check` from the repository root to typecheck the plugin, test agent state/reconnect and UI geometry, and compile the runtime and renderer. Actual macOS GUI behavior still requires a manual smoke test.
-
-## License
-
-MIT.
-
-See [release instructions](docs/releasing.md) for building packages and the GitHub Release workflow.
+Enabling the plugin automatically downloads, verifies, and starts the floating companion. No manual DMG download is needed. The first launch downloads about 100 MB and may take a few minutes; later launches reuse the cache. Disable the plugin to close its managed window.
