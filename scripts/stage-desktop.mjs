@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const stage = path.join(root, "build/desktop");
 await rm(stage, { recursive: true, force: true });
 await mkdir(path.join(stage, "runtime"), { recursive: true });
-for (const file of ["main.cjs", "preload.cjs", "window-bounds.cjs", "window-drag.cjs", "paseo-connection.cjs", "dist"]) {
+for (const file of ["main.cjs", "preload.cjs", "window-bounds.cjs", "window-drag.cjs", "paseo-connection.cjs", "display-settings.cjs", "dist"]) {
   await cp(path.join(root, "apps/desktop", file), path.join(stage, file), { recursive: true });
 }
 await build({

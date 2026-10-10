@@ -39,3 +39,11 @@ The repository root is a valid Paseo plugin source. The desktop app is packaged 
 `server/desktop-companion.ts` selects only the fixed version’s arm64/x64 ZIP under the project’s GitHub Releases. It obtains SHA-256 from that release’s checksum manifest, verifies bytes before extraction, validates bundle ID and code signature, and installs atomically into `~/Library/Caches/Paseo Buddy/companions`. It invokes only `/usr/bin/ditto`, `/usr/bin/plutil`, `/usr/bin/codesign`, and the verified app executable, without a shell or user-supplied commands. No administrator privileges, OS security bypass, or credential copying are used. A narrow environment carries local daemon home and parent identity while excluding provider secrets.
 
 Startup runs in the background without blocking RPC registration. Downloads retry with backoff, are cancellable on plugin unload, and never launch partial/unverified files. Cached apps are validated before reuse. Only a local macOS desktop session can display the app; remote daemons do not launch client-side windows.
+
+## Appearance preferences
+
+Verified against installed Paseo 0.11.2 and official SDK 0.11.1: `addSettingsScreen` contributes a native Paseo settings page; `defineSettings`/`registerSettings`/`useSettings` provide host-scoped, schema-validated persistence and change subscriptions. `index.client.tsx` registers the appearance screen. Client code uses only host settings UI components, and shared contracts remain runtime-neutral.
+
+`server/display-settings.ts` creates a private per-plugin-lifetime appearance mirror (only opacity/scale, mode 0600) and waits for authoritative hydration before launching the child. Live changes override stale initial reads. The file path is passed only through the managed child's `PASEO_BUDDY_DISPLAY_FILE` environment. No extra listener or settings command endpoint is opened. Canonical persistence stays in Paseo; the temporary mirror is removed on cleanup.
+
+Electron validates the mirror, watches atomic replacements with an event watcher and a 250ms stat fallback, and keeps the last valid appearance on malformed data. Native opacity and Chromium zoom are applied together with scaled window geometry. Expand/collapse, drag calculations, boundary clamping, and saved anchors use the same scale so resizing does not shift the pill unnecessarily.

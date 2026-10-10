@@ -55,6 +55,8 @@ Never enable the global plugin switch automatically.
 
 ## Compact desktop window
 
+Without a saved position, startup places the compact window at the primary display’s bottom-right work-area corner, inset 30px from the right and bottom. A valid saved position still takes precedence.
+
 The visible pill is 88 × 36 px inside a 104 × 52 px transparent window; the popover window is 320 × 340 px. Keep CSS dimensions and `window-bounds.cjs` geometry in sync. On macOS, `app.dock.hide()` hides the Dock icon, and the window opens with `showInactive()` after rendering. Quit from the pill’s right-click menu. A previous isolated macOS Electron smoke test verified `dock.isVisible() === false`, the compact/expanded window geometry; both rendered captures were visually reviewed.
 
 The whole pill uses pointer capture and narrow drag-start/drag-end IPC. Main-process cursor sampling applies a 4px drag threshold; a drag never toggles the panel. Screen placement uses full display bounds and `enableLargerThanScreen` disables AppKit’s work-area clamping, so the pill can reach the actual screen bottom. The `pop-up-menu` window level keeps it visible above the Dock. The panel opens above a bottom-positioned pill and keeps its anchor while dragging. Positive running counts are red; completed-unread counts are green. Both appear together when needed, and zero/disconnected counts are neutral. Buddy never clears Paseo attention state.
@@ -94,3 +96,13 @@ An isolated Electron renderer check with stable fixture data verified hover prev
 Companion bootstrap tests inject downloads and child processes so `npm run check` never installs or launches software. `contribute()` returns async cleanup that stops the owned child. The default bootstrap uses the pinned release, cancellable streaming SHA-256 verification, macOS app validation, and fixed executable argv. A managed app receives only a narrow environment, and monitors `PASEO_BUDDY_PARENT_PID` to avoid an orphan after daemon/plugin crashes.
 
 The v0.1.1 local native companion smoke test streamed and checksummed the built ZIP, extracted it with ditto, validated bundle ID/signature, opened a managed window connected to the real daemon, reused its cache without downloading again, confirmed a duplicate launch exited, and confirmed controller cleanup terminated its child. This test used a temporary cache and did not install a public Git plugin or modify Paseo trust settings.
+
+## Paseo appearance settings
+
+Before implementation, support was verified in the installed Paseo 0.11.2 client bundle (`addSettingsScreen`, settings screen registry), daemon settings change dispatcher, official plugin SDK declarations, and [official settings documentation](https://paseo.sh/docs/plugins/reference#settings-screens).
+
+The settings entry is **Settings → Plugins → Paseo Buddy → 悬浮窗口**. Opacity is 30–100% (100% is fully opaque), and size presets are 75%, 100%, 125%, and 150%. The host settings document uses `id: display`, `scope: host`, and version 1. The server mirror is temporary, private, sanitized, atomically replaced, and owned by plugin cleanup; it is not the persistent store. Failed/stale writes are handled by the SDK revision contract, and invalid stored data exposes retry/reset controls.
+
+Appearance settings require the matching v0.1.2 companion because v0.1.1 has no appearance-file reader. The plugin’s pinned companion version must match the release assets. Developing these controls used isolated tests without modifying the installed plugin.
+
+Validation: the installed Paseo compiler successfully compiled both new client and server entries without executing plugin code or changing trust settings. An isolated source-app test restored 60% opacity/125% size, updated live to 40%/150%, verified scaled expanded bounds, then resized to 75% and collapsed without moving its anchor. The first-launch default remained bottom-right. Automated tests cover schema bounds, hydration races, private mirror cleanup, atomic replacements, and scaled geometry.

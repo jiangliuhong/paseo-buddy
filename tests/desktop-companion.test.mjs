@@ -103,3 +103,17 @@ test('temporary release errors retry and can be cancelled cleanly',async()=>{
   });
   await companion.ready;assert.equal(attempts,2);await companion.stop();
 });
+
+test('display mirror readiness gates startup and its path is passed only to the owned child',async()=>{
+  let release;let ensured=false;let env;
+  const companion=startDesktopCompanion({platform:'darwin',arch:'arm64',log(){},displayFile:'/private/display.json',displayReady:new Promise(r=>release=r),
+    ensure:async()=>{ensured=true;return '/verified/app';},spawn:(_cmd,_args,options)=>{env=options.env;return fakeChild(options.signal);},
+  });
+  await Promise.resolve();assert.equal(ensured,false);release();await companion.ready;
+  assert.equal(env.PASEO_BUDDY_DISPLAY_FILE,'/private/display.json');await companion.stop();
+});
+test('cleanup aborts while waiting for initial display settings',async()=>{
+  let spawned=false;
+  const companion=startDesktopCompanion({platform:'darwin',arch:'arm64',log(){},displayReady:new Promise(()=>{}),ensure:async()=>{spawned=true;return '/never';}});
+  await companion.stop();assert.equal(spawned,false);
+});

@@ -9,7 +9,7 @@ import { pipeline } from "node:stream/promises";
 import type { ChildProcess } from "node:child_process";
 import { execCommand, spawnProcess } from "@getpaseo/plugin/server";
 
-export const companionVersion = "0.1.1";
+export const companionVersion = "0.1.2";
 const releaseBase = `https://github.com/jiangliuhong/paseo-buddy/releases/download/v${companionVersion}`;
 const maxArchiveBytes = 200 * 1024 * 1024;
 const bundleId = "io.github.jiangliuhong.paseobuddy";
@@ -134,6 +134,8 @@ export function startDesktopCompanion(options: {
   platform?: string;
   arch?: string;
   cacheRoot?: string;
+  displayFile?: string;
+  displayReady?: Promise<void>;
   ensure?: typeof ensureCompanion;
   spawn?: typeof spawnProcess;
   retryMs?: number;
@@ -151,6 +153,11 @@ export function startDesktopCompanion(options: {
       log("Paseo Buddy desktop auto-start is available only on local macOS daemons (arm64/x64).");
       return;
     }
+    await Promise.race([
+      options.displayReady ?? Promise.resolve(),
+      new Promise<void>(resolve => controller.signal.addEventListener("abort", () => resolve(), { once: true })),
+    ]);
+    if (controller.signal.aborted) return;
     let failures = 0;
     while (!controller.signal.aborted) {
       try {
@@ -162,7 +169,7 @@ export function startDesktopCompanion(options: {
         controller.signal.throwIfAborted();
         child = (options.spawn ?? spawnProcess)(executable, [], {
           shell: false, stdio: "ignore", signal: controller.signal, killSignal: "SIGTERM",
-          env: companionEnvironment(process.env, process.pid),
+          env: { ...companionEnvironment(process.env, process.pid), ...(options.displayFile ? { PASEO_BUDDY_DISPLAY_FILE: options.displayFile } : {}) },
         });
         child.on("error", () => { if (!controller.signal.aborted) log("Paseo Buddy desktop could not be launched."); });
         await new Promise<void>((resolve, reject) => { child!.once("spawn", resolve); child!.once("error", reject); });

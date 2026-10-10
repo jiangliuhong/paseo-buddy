@@ -11,11 +11,15 @@
     ],
     "lib": [
       "ES2022"
-    ]
+    ],
+    "jsx": "react-jsx"
   },
   "include": [
     "index.server.ts",
     "server/**/*.ts",
-    "shared/**/*.ts"
+    "shared/**/*.ts",
+    "index.client.tsx",
+    "client/**/*.ts",
+    "client/**/*.tsx"
   ]
 }

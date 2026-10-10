@@ -18,6 +18,12 @@ Requires Paseo >=0.11.1, npm for plugin dependency preparation, and a local macO
 
 Standalone [DMG/ZIP downloads](https://github.com/jiangliuhong/paseo-buddy/releases) remain available for users who prefer to launch the app independently.
 
+## Appearance settings (v0.1.2)
+
+The plugin adds **Settings → Plugins → Paseo Buddy → 悬浮窗口**. Set opacity from 30% to 100% and choose 75%, 100%, 125%, or 150% size. Saving updates the managed floating window live; settings survive plugin/daemon restarts. Existing window positions are preserved when resizing.
+
+These controls require the v0.1.2 plugin and matching companion. Upgrade a v0.1.1 installation with `paseo plugin update paseo-buddy`; the plugin obtains the matching desktop program automatically.
+
 ## Run from source (macOS)
 
 Node.js 22+ and npm are required. Install dependencies **from the repository root** so npm installs the desktop workspace and its React/Vite/TypeScript type packages.

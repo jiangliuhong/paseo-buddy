@@ -22,7 +22,7 @@ If upgrading from a version without workspaces, run `git pull && npm install` fr
 
 The app builds the UI first, then opens a compact 88 × 36 px floating pill without taking focus. On macOS the application hides its Dock icon; use the pill’s right-click menu to quit. Drag anywhere on the pill to move it. Click anywhere on the pill to expand/collapse the live running-agent list. Right-click the window and choose **Quit Paseo Buddy** to exit; the macOS app menu also supports Command-Q.
 
-The collapsed pill's position is saved in Electron's userData folder and restored on restart. The panel chooses a direction based on available screen space: left or right, above or below, while keeping the pill in place.
+On first launch, the pill defaults to the primary display’s bottom-right work-area corner with a 30px inset. The collapsed pill's position is saved in Electron's userData folder and restored on restart. The panel chooses a direction based on available screen space: left or right, above or below, while keeping the pill in place.
 
 ## Static checks
 
@@ -49,3 +49,5 @@ Truncated project/workspace and agent names show their full text in a custom pre
 To produce standalone macOS packages, run `npm run desktop:package -- --arm64 --x64` from the repository root. See [release instructions](../../docs/releasing.md).
 
 When started by the plugin, the app is single-instance and exits if its plugin parent disappears. Disabling the plugin closes the child it owns. Source/standalone launches remain available.
+
+The v0.1.2 companion reads an appearance-only file supplied by the managed plugin. Paseo's settings page controls native opacity (30–100%) and whole-widget scale (75–150%), including the popover and dragging geometry. Manual launches without a mirror use defaults. This requires the v0.1.2 plugin and desktop app; v0.1.1 does not support the appearance-file protocol.

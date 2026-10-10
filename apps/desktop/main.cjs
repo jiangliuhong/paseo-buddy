@@ -2,10 +2,14 @@ const { app, BrowserWindow, ipcMain, screen, Menu } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
-const { compact, defaultPlacement, boundsFor, collapsedAnchor, resizedLayout } = require("./window-bounds.cjs");
+const { compact, scaledSize, defaultPlacement, boundsFor, collapsedAnchor, resizedLayout } = require("./window-bounds.cjs");
 
 const { readPaseoConfig } = require("./paseo-connection.cjs");
 const { createGesture } = require("./window-drag.cjs");
+const { defaults: displayDefaults, readDisplaySettings, watchDisplaySettings } = require("./display-settings.cjs");
+const displayFile = process.env.PASEO_BUDDY_DISPLAY_FILE;
+let display = readDisplaySettings(displayFile) || displayDefaults;
+let stopDisplayWatcher;
 let gesture;
 let dragTimer;
 let isExpanded = false;
@@ -22,12 +26,16 @@ function readPosition() {
     if (Number.isFinite(pos.x) && Number.isFinite(pos.y)) return pos;
   } catch {}
   const area = screen.getPrimaryDisplay().workArea;
-  return { x: area.x + area.width - compact.width - 30, y: area.y + 30 };
+  const size = scaledSize(compact, display.scale);
+  return {
+    x: area.x + area.width - size.width - 30,
+    y: area.y + area.height - size.height - 30,
+  };
 }
 
 function savePosition() {
   if (!win || win.isDestroyed()) return;
-  const anchor = collapsedAnchor(win.getBounds(), placement);
+  const anchor = collapsedAnchor(win.getBounds(), placement, display.scale);
   try {
     fs.mkdirSync(path.dirname(positionFile()), { recursive: true });
     fs.writeFileSync(positionFile(), JSON.stringify(anchor));
@@ -45,7 +53,7 @@ function createWindow() {
   const pos = readPosition();
   const area = screen.getDisplayNearestPoint(pos).bounds;
   win = new BrowserWindow({
-    ...boundsFor(compact, pos.x, pos.y, area),
+    ...boundsFor(scaledSize(compact, display.scale), pos.x, pos.y, area),
     show: false,
     frame: false,
     transparent: true,
@@ -56,8 +64,10 @@ function createWindow() {
     acceptFirstMouse: true,
     skipTaskbar: true,
     hasShadow: false,
+    opacity: display.opacity,
     backgroundColor: "#00000000",
     webPreferences: {
+      zoomFactor: display.scale,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -126,7 +136,7 @@ app.whenReady().then(() => {
     if (!gesture || !win || win.isDestroyed()) return;
     const cursor = screen.getCursorScreenPoint();
     const area = screen.getDisplayNearestPoint(cursor).bounds;
-    const layout = gesture.move(cursor, area, isExpanded);
+    const layout = gesture.move(cursor, area, isExpanded, display.scale);
     if (!layout) return;
     const changed = placement.horizontal !== layout.placement.horizontal
       || placement.vertical !== layout.placement.vertical;
@@ -137,7 +147,7 @@ app.whenReady().then(() => {
   ipcMain.handle("buddy:drag-start", (event) => {
     validateSender(event);
     clearInterval(dragTimer);
-    gesture = createGesture(screen.getCursorScreenPoint(), collapsedAnchor(win.getBounds(), placement));
+    gesture = createGesture(screen.getCursorScreenPoint(), collapsedAnchor(win.getBounds(), placement, display.scale));
     dragTimer = setInterval(moveGesture, 16);
   });
   ipcMain.handle("buddy:drag-end", (event) => {
@@ -162,7 +172,7 @@ app.whenReady().then(() => {
       y: current.y,
     }).bounds;
     isExpanded = value === true;
-    const layout = resizedLayout(current, isExpanded, area, placement);
+    const layout = resizedLayout(current, isExpanded, area, placement, display.scale);
     placement = layout.placement;
     win.setBounds(layout.bounds);
     return { placement };
@@ -174,6 +184,20 @@ app.whenReady().then(() => {
     return agentState;
   });
   createWindow();
+  stopDisplayWatcher = watchDisplaySettings(displayFile, next => {
+    if (!win || win.isDestroyed() || (next.opacity === display.opacity && next.scale === display.scale)) return;
+    const anchor = collapsedAnchor(win.getBounds(), placement, display.scale);
+    const area = screen.getDisplayNearestPoint(anchor).bounds;
+    const bounds = boundsFor(scaledSize(compact, next.scale), anchor.x, anchor.y, area);
+    const layout = resizedLayout(bounds, isExpanded, area, undefined, next.scale);
+    display = next;
+    placement = layout.placement;
+    win.setOpacity(display.opacity);
+    win.webContents.setZoomFactor(display.scale);
+    win.setBounds(layout.bounds);
+    win.webContents.send("buddy:placement", placement);
+    scheduleSavePosition();
+  });
   const runtime = app.isPackaged
     ? pathToFileURL(path.join(__dirname, "runtime/live-agents.mjs")).href
     : pathToFileURL(path.join(__dirname, "../../build/server/live-agents.js")).href;
@@ -193,4 +217,4 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => app.quit());
 
-app.on("before-quit", () => { clearInterval(parentTimer); void liveAgents?.stop(); });
+app.on("before-quit", () => { clearInterval(parentTimer); stopDisplayWatcher?.(); void liveAgents?.stop(); });

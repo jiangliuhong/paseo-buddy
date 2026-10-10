@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 
 const root = path.resolve(import.meta.dirname, "..");
 const stage = path.join(root, "build/desktop");
-for (const file of ["main.cjs", "preload.cjs", "window-bounds.cjs", "window-drag.cjs", "paseo-connection.cjs", "dist/index.html", "runtime/live-agents.mjs"]) {
+for (const file of ["main.cjs", "preload.cjs", "window-bounds.cjs", "window-drag.cjs", "paseo-connection.cjs", "display-settings.cjs", "dist/index.html", "runtime/live-agents.mjs"]) {
   await access(path.join(stage, file));
 }
 const pkg = JSON.parse(await readFile(path.join(stage, "package.json"), "utf8"));
