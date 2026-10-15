@@ -1,0 +1,37 @@
+# Paseo Buddy
+
+[English](README.md)
+
+一个 macOS 悬浮窗口，随时查看 Paseo agent 的运行和未读状态。
+
+![Paseo Buddy 悬浮窗口](docs/images/paseo-buddy-pill.jpg)
+
+## 安装
+
+需要 macOS 13+、Paseo ≥ 0.11.1 和 npm。Paseo daemon 需运行在本机已登录的桌面会话中。
+
+1. 打开 **Paseo → Settings → Plugins**，添加 `git:jiangliuhong/paseo-buddy` 并启用插件。
+2. 进入 **Paseo Buddy → 悬浮窗口**，点击 **下载并启动**。
+3. 下载完成后，悬浮窗口会自动启动，无需本地编译。
+
+后续启用会复用已下载的程序。更新插件时运行：
+
+```sh
+paseo plugin update paseo-buddy
+```
+
+更新后如需新版悬浮窗程序，再点击一次 **下载并启动**。
+
+## 使用
+
+- **红色徽章**：正在运行的 agent 数量。**绿色徽章**：已完成但未读的 agent 数量。数量为 0 时隐藏徽章。
+- 点击胶囊展开或收起 agent 列表，等待权限确认的 agent 单独显示。
+- 点击 **Open in Paseo** 打开对应对话；点击 **Mark as read** 将已完成的 agent 标记为已读。仅展开列表不会自动标记已读。
+- 拖动胶囊调整位置；右键选择 **Quit Paseo Buddy** 退出。
+- 按 **Tab** 聚焦，**空格/回车** 展开或收起列表，**Escape** 收起列表，**Shift-F10** 打开菜单。
+
+在 **悬浮窗口 → 外观** 中调整透明度、大小、图标和文本显示、自定义文本及列表高度。修改文本后，点击 **保存文本**。
+
+点击 **启动缓存** 可重新启动已下载的程序，点击 **停止** 可关闭悬浮窗。禁用插件也会关闭窗口。下载失败时，检查 GitHub 连接后重试 **下载并启动**。
+
+完成通知是否显示，取决于已有的 macOS 通知权限和专注模式设置。
