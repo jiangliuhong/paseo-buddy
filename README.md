@@ -42,4 +42,4 @@ When the Paseo client mounts Buddy’s sidebar contribution, Buddy observes conf
 
 Observation continues for known hosts when the sidebar is hidden. Added/removed hosts reconcile when the sidebar contribution mounts again. Closing the Paseo client expires remote state within 15 seconds; local daemon observation continues. Offline host summaries remain visible while the relay is active, and badges count available agents only. Limits are 64 configured hosts and 5,000 total agents.
 
-The development branch targets 0.1.5 and requires its matching native release. Until those assets are published, validate using the developer build; old native binaries do not implement these changes.
+Version 0.1.5 requires its matching native release. After updating the plugin, stop the old companion and choose **下载并启动** to install the matching executable; old native binaries do not implement these changes.

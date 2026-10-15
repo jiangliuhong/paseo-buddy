@@ -1,7 +1,14 @@
-# Publishing the native-source plugin
+# Publishing the native plugin
 
-The current implementation distributes plugin and embedded Swift/AppKit source through a reviewed Git revision. It does not publish or download a Companion binary, DMG, ZIP, compiler or Electron runtime. Historical `docs/releases/` notes describe old Electron releases and are not installation instructions for the current source.
+The plugin ships embedded Swift/AppKit source and downloads a matching native executable from a fixed GitHub Release. The executable and manifest must match the plugin version, source SHA-256, recipe and architecture. Never reuse an older release's assets for a changed source identity.
 
-Before proposing a Registry pin: run `npm ci --ignore-scripts`, `npm run check`, `npm run native:check`, `npm run native:build`, then complete native desktop acceptance on the supported architectures. Capture a real running interface and verify its public HTTPS image URL. Review source/build/process permissions and confirm OVERVIEW.md matches the revision. See `review-readiness.md`.
+1. Update `package.json`, `package-lock.json`, `companionVersion`, embedded Info.plist, `nativeReleaseTag` and the workflow's default tag together.
+2. Add `docs/releases/<version>.md`. Describe implemented changes, upgrade steps and remaining acceptance limits; the publish job requires this exact file.
+3. Run `npm run check` and `npm run native:check`. For local cross-compilation, run `node scripts/package-native-release.mjs` after runtime compilation on macOS. GUI and real-host acceptance are separate from automated checks.
+4. Commit and push the release revision. With explicit release authorization, create and push its `v<version>` tag. Do not move or overwrite a published tag.
+5. The Native release workflow runs validation on macOS, cross-compiles Apple Silicon and Intel executables, and uploads both executables and both JSON manifests. Only a successful build allows the publish job to create the GitHub Release.
+6. Verify the workflow succeeds, the Release targets the intended tag, and all four assets are available. Failed workflows are not a completed release; inspect the failed job before retrying.
 
-Record the final committed SHA and send it, validation results and screenshot URL to the existing Registry PR only when the user authorizes posting. No new tag, Release or Registry PR is necessary for this remediation. Commit/push/publication are separate user-authorized actions. The automatic binary Release workflow has been removed.
+Users update with `paseo plugin update paseo-buddy`, reload the plugin/client, then stop the old companion and choose **下载并启动**. Existing verified caches for other versions are preserved. Users do not need a compiler. Apple Developer signing/notarization and real hardware/download acceptance must not be implied by successful CI alone.
+
+Registry changes, posting to discussions/issues and unrelated publication require their own authorization.

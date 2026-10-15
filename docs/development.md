@@ -61,4 +61,4 @@ Run `npm run check` and `npm run native:check`. Tests cover multi-host collision
 
 Right-click and Shift-F10 now use absolute screen coordinates, with layout/dragging suspended during menu tracking and the retained anchor reapplied afterward. Manually dismiss menus in collapsed/expanded modes near all display edges and on a negative-coordinate display; verify the capsule stays in place and subsequent dragging/clicking still works. Automated native checks compile the actual source and validate the surrounding anchor geometry; they do not establish real menu-event acceptance.
 
-Version 0.1.5 and its native source identity are prepared locally. No tag or release is published by these development changes. `npm run native:start` validates the standalone local observer only; full multi-host acceptance requires the Paseo-hosted client contribution and daemon relay.
+Version 0.1.5 and its native source identity must be released together using the version-tag workflow. `npm run native:start` validates the standalone local observer only; full multi-host acceptance requires the Paseo-hosted client contribution and daemon relay.
