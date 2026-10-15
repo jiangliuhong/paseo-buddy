@@ -2,6 +2,8 @@
 
 A native macOS floating companion for Paseo agents, built with Swift/AppKit. Red numbers show running agents; green numbers show completed unread agents. Click the pill for project/workspace/agent details and a separate permission-wait section. The pill uses a segmented monochrome toolbar, red running and green unread corner badges at the top right; the expanded list uses a translucent rounded panel and grouped agent cards. Drag the pill anywhere within the full screen, including the area reserved for the Dock; right-click for keyboard focus or Quit. Tab focuses the pill; Shift-F10 opens its controls menu. Clicking the pill does not add a blue focus outline. Opening Buddy never automatically marks agents read. Completed-unread cards include **Mark as read**, which explicitly updates Paseo; **Open in Paseo** has a rounded hover highlight and hand cursor.
 
+![Paseo Buddy native floating pill with red running and green unread badges](docs/images/paseo-buddy-pill.jpg)
+
 ## Install and start
 
 Requires Paseo ≥ 0.11.1, npm for plugin preparation, and **macOS 13+** on the local daemon machine. The daemon must run in your logged-in desktop session. Apple Silicon and Intel release binaries are supported; Intel native execution still needs hardware acceptance testing.

@@ -68,13 +68,15 @@ Run on Apple Silicon and Intel in a local desktop session. Preserve existing cac
 
 The list above remains the full acceptance checklist. The local evidence completes only the specific portions recorded above. End-to-end release download/settings disable, daemon-process restart, notification permission/banner delivery, Intel execution, VoiceOver and multi-display/full-screen behavior still require manual acceptance. Do not infer their success from unit tests, compilation or observer-only reconnect.
 
-## Screenshot and publication: pending
+## Interface screenshot
 
-Only `assets/icon.png` exists; it is not an interface screenshot. After real native acceptance, capture the actual pill/list using a workspace with no sensitive names. Save and visually inspect `docs/images/paseo-buddy-agent-list.png`, then reference it from README/OVERVIEW. Do not substitute an AI image or fixture rendering.
+`docs/images/paseo-buddy-pill.jpg` is an unmodified screenshot of the actual running native floating pill, captured on 2026-10-15 through the macOS app screenshot API. The original JPEG is 256 × 88 pixels. It shows Buddy branding with a red running badge and a green unread badge. It contains no project/workspace names, conversation titles, paths or surrounding desktop content. The saved file was visually inspected and is referenced from README and OVERVIEW.
 
-Commit/push only with user authorization. Record the actual new commit and, once published, verify the image's public HTTPS URL returns 200 and `image/png`; inspect the returned image. A path template is not a working media URL. The current uncommitted working tree and pending screenshot cannot be presented as a completed Registry remediation.
+The screenshot was captured from the installed 0.1.3-native.1 app (source identity `e5fb174fa6994f3b`), whose embedded Swift UI source is unchanged in 0.1.4-native.1. It is evidence of the real native pill, not downloaded-v0.1.4 execution, expanded-list acceptance, or the remaining manual acceptance scenarios. No AI rendering, fixture UI or image retouching was used.
 
-A reviewer reply should link the actual reviewed commit, explain explicit release-download action and cache validation, give the exact checks and manual acceptance actually performed, and state screenshot/feature limits. Do not reuse the older Electron installation/download reply draft.
+Commit/push of the screenshot is authorized by the user. For Registry media, use the public raw GitHub HTTPS `.jpg` URL at the screenshot commit and verify HTTP 200 and `image/jpeg` after pushing. Registry acceptance and listing changes remain reviewer-owned; a screenshot commit alone does not mean Registry publication is complete.
+
+A reviewer reply should link the actual reviewed commit, explain the explicit release-download action and cache validation, provide this interface image, and state checks and manual acceptance actually performed. Do not reuse the older Electron installation/download reply draft.
 
 ## Pill collapse regression
 
