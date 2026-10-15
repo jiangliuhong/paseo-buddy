@@ -4,12 +4,12 @@ Review: https://github.com/getpaseo/plugins/pull/299#pullrequestreview-547884506
 
 ## Current implementation
 
-The source refactor is complete locally: the working tree has migrated from the published Electron companion to embedded Swift/AppKit source, and all V1 feature paths have implementations. This is a code-completion statement, not a claim of full hardware acceptance or Registry publication. Older release/download validation does not describe this revision. No separate companion binary, ZIP or runtime is downloaded.
+The working tree uses a native Swift/AppKit companion. The v0.1.4 installation flow now downloads a matching GitHub Release after one explicit settings-button click. Earlier local-build and Electron release evidence does not establish downloaded-binary acceptance for this revision. No release has been published by this task.
 
-- Activation starts only a verified cache matching the native recipe, version, architecture, source SHA-256 and executable SHA-256.
-- Settings preparation shows the native version, source path/hash, architecture and Apple developer-tool requirements. A distinct confirmation authorizes compilation and startup; preparation/cancel cannot compile or launch.
-- Authorization is ephemeral, single-use and expires after five minutes. Stop/disable revokes it, cancels compilation and stops only the owned process. Failed builds require fresh confirmation.
-- Compilation uses bundled source and fixed Apple tool arguments without a shell, privilege elevation or developer-tool installation. Private temporary builds are cleaned; unknown/corrupt caches and legacy Electron caches are preserved.
+- Activation starts only a verified version/architecture/source/binary-matched cache without network access.
+- **下载并启动** downloads the fixed release executable and manifest; it needs no compiler or second confirmation. Source/version/architecture and SHA-256 are checked before atomic cache publication or launch.
+- Downloads have size/deadline bounds and checked GitHub HTTPS redirects. Stop/disable cancel downloads, clean staging and stop only the owned process. Failed downloads permit retry.
+- Local builds remain a developer option. Unknown/corrupt caches and legacy Electron files are preserved. No Gatekeeper modification, quarantine removal, administrator access or tool installation occurs.
 - The native child receives normalized snapshots over stdin. Credentials and SDK observation stay in Node; no new listener is opened. The owned process must report READY before observation starts.
 - Paginated directory snapshots load completely before display. Buffered updates are replayed after loading. Invalid cursors, failed pages, oversized directories and buffer overflow clear state and reconnect; late superseded results cannot overwrite a new snapshot.
 - Opacity/scale settings apply live; native geometry preserves the pill anchor. Keyboard controls and the grouped agent list are implemented. Opening Buddy never clears daemon attention.
@@ -20,11 +20,15 @@ Completion/failure notification delivery is implemented for live SDK terminal ev
 
 The installed application reports Paseo 0.11.2; the repository uses official plugin/client SDK declarations at 0.11.1. The SDK declares directory pagination, creation-time sort, request AbortSignal and owned subscriptions used by the observer.
 
-Local validation on 2026-10-15: `npm run check` passed TypeScript checking, runtime compilation, all 81 Node tests and plugin bundling without launching a native window. The suite covers state transitions, placement retention across idle periods, read/unread snapshots, paginated hydration/update races, superseded snapshots, cancellation, reconnect/backoff, directory growth limits, settings, build consent, cache integrity, build concurrency, startup/shutdown lifetime races, notification identity/deduplication, timeline cleanup and stdin backpressure boundaries. Unit tests use injected clients/processes. There is no standalone lint configuration; `git diff --check` passed whitespace checks.
+Local validation on 2026-10-15: `npm run check` passed TypeScript checking, runtime compilation, all 93 Node tests and plugin bundling without launching a native window. The suite covers state transitions, placement retention across idle periods, read/unread snapshots, paginated hydration/update races, superseded snapshots, cancellation, reconnect/backoff, directory growth limits, settings, build consent, cache integrity, build concurrency, startup/shutdown lifetime races, notification identity/deduplication, timeline cleanup and stdin backpressure boundaries. Unit tests use injected clients/processes. There is no standalone lint configuration; `git diff --check` passed whitespace checks.
 
 `npm run native:check` also passed locally on 2026-10-15: it compiled the actual AppKit definitions and ran real NSView pill hit-testing, anchor geometry, snapshot/notification decoding and navigation validation checks without opening windows. This does not prove Intel execution, accessibility or full GUI behavior.
 
 `npm run native:build` compiled and validated the final Apple Silicon app bundle. Its embedded source SHA-256 is `e5fb174fa6994f3bf1b73c796a955400e5eb5764fb58f6356746d398abc03b99`. Runtime dependencies are client/protocol SDK 0.11.1 and Zod; no Electron runtime is present.
+
+## v0.1.4 download-flow validation
+
+On 2026-10-15, `npm run check` passed all 93 tests, TypeScript and both plugin bundles. `npm run native:check` passed. `node scripts/package-native-release.mjs` compiled both release executables: `file` identified arm64 and x86_64 Mach-O binaries. Both actual generated binary/manifest pairs passed the production download/cache-install path using an injected local-file transport, without launching a window. This validates asset layout and integrity contracts, not live GitHub networking or downloaded-binary GUI execution. All four assets are under `build/release`; no commit, tag, push or release publication occurred.
 
 ## Local desktop and daemon evidence
 
@@ -43,12 +47,12 @@ The interactive build preceded the final focus-ring polish, context-menu simplif
 
 Run on Apple Silicon and Intel in a local desktop session. Preserve existing caches and independently running apps.
 
-1. Enable with no matching native cache: no compiler, download or child process. Snapshot RPC remains usable and settings show that a build is needed.
-2. Select **Build and start native companion**. Verify version, source identity/hash, architecture and developer-tool requirements. Cancel: no compilation or launch. Repeat to verify cancellation stays effective.
-3. Confirm: one compilation and one owned process despite double-clicks or a second settings session. Verify valid app/manifest hashes, no residual `.build-*` directories, one nonactivating floating window and local agent updates.
-4. Stop or disable during compilation: cancellation cleans temporary output and no child launches. Retry requires fresh confirmation. Missing/broken Apple tools produce a visible error without installing or repairing tools.
-5. Re-enable with a valid same-source cache: starts without compilation. Stop then **Start cached companion** reuses it. Right-click Quit permits a later cached start.
-6. Corrupt the isolated current cache: cached start fails closed; confirmed build preserves it and requests explicit repair. Older native and legacy Electron caches remain untouched.
+1. Enable with no matching native cache: no compiler, download or child process. Snapshot RPC remains usable and settings provide 下载并启动.
+2. Click **下载并启动** with the matching release published: verify the matching architecture asset downloads and starts without developer tools or a second confirmation.
+3. Double-click or use a second settings session: only one operation and one owned process; valid app/manifest hashes, no residual staging directories, one nonactivating floating window and local agent updates.
+4. Stop/disable during download: staging is cleaned and no child launches. Retry with the same button. Missing release, offline GitHub, timeout and corrupt/wrong-version assets produce visible errors without compilation or security bypasses.
+5. Re-enable with valid cache: starts without compilation or network. Cached start and Quit/restart work.
+6. Corrupt an isolated current cache: cached start fails closed; download preserves it and requests explicit repair. Older native and legacy Electron caches remain untouched.
 7. Start a second copy using the same native cache root: the native lock prevents duplicate windows. Stop affects only the owned child. A developer window using a different cache root is independent.
 8. Exercise three simultaneous turns, completion/read updates, permission waits and elapsed labels. Verify paginated directories and updates during hydration never show a partial count. Restart the daemon mid-turn: clear stale state, rediscover endpoint/credential and reconcile from a fresh full snapshot.
 9. Verify opacity/scale, drag, collapse/expand, scroll position, multiple displays and full-screen behavior. Check keyboard focus, Space/Return, Escape and VoiceOver without incidental focus stealing.
@@ -56,7 +60,7 @@ Run on Apple Silicon and Intel in a local desktop session. Preserve existing cac
 11. Before granting notification permission, finish/fail a turn: no prompt, focus change or historical backlog. On an installation with existing macOS authorization, finish/fail a newly observed turn: one notification attempt per explicit turn ID. Repeat an event, reconnect and read/unread the agent: no duplicate. Cancel a turn or restart with completed unread agents: no completion alert. Deny permission: counts and reconnects still work. Verify actual banners with Focus disabled and notification preferences enabled; test permission denial separately.
 12. Open the list without selecting a row: Paseo stays in the background and unread state remains unchanged. Select **Open in Paseo** using mouse and keyboard: the intended agent on the selected local host opens. Missing server identity hides navigation; encoded IDs cannot alter the route or launch another scheme. Verify Paseo's normal read behavior after selection.
 
-The list above remains the full acceptance checklist. The local evidence completes only the specific portions recorded above. End-to-end settings build/disable, daemon-process restart, notification permission/banner delivery, Intel execution, VoiceOver and multi-display/full-screen behavior still require manual acceptance. Do not infer their success from unit tests, compilation or observer-only reconnect.
+The list above remains the full acceptance checklist. The local evidence completes only the specific portions recorded above. End-to-end release download/settings disable, daemon-process restart, notification permission/banner delivery, Intel execution, VoiceOver and multi-display/full-screen behavior still require manual acceptance. Do not infer their success from unit tests, compilation or observer-only reconnect.
 
 ## Screenshot and publication: pending
 
@@ -64,7 +68,7 @@ Only `assets/icon.png` exists; it is not an interface screenshot. After real nat
 
 Commit/push only with user authorization. Record the actual new commit and, once published, verify the image's public HTTPS URL returns 200 and `image/png`; inspect the returned image. A path template is not a working media URL. The current uncommitted working tree and pending screenshot cannot be presented as a completed Registry remediation.
 
-A reviewer reply should link the actual reviewed commit, explain source compilation consent and cache validation, give the exact checks and manual acceptance actually performed, and state screenshot/feature limits. Do not reuse the older Electron installation/download reply draft.
+A reviewer reply should link the actual reviewed commit, explain explicit release-download action and cache validation, give the exact checks and manual acceptance actually performed, and state screenshot/feature limits. Do not reuse the older Electron installation/download reply draft.
 
 ## Pill collapse regression
 

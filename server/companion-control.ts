@@ -16,15 +16,15 @@ export function createCompanionControl(options: Parameters<typeof startDesktopCo
   let operation = 0;
   let stopFailed = false;
   let closed = false;
-  function launch(allowBuild: boolean) {
+  function launch(allowBuild: boolean, allowDownload = false) {
     if (closed || !supported || busy || status.state === "running") return;
     const revision = ++operation;
     status = { state: "starting", error: null };
     try {
       companion = start({
-        ...options, allowBuild,
+        ...options, allowBuild, allowDownload,
         onExit: () => { if (revision === operation) status = { state: "stopped", error: null }; },
-        onError: message => { if (revision === operation) status = { state: allowBuild ? "error" : "stopped", error: message }; },
+        onError: message => { if (revision === operation) status = { state: (allowBuild || allowDownload) ? "error" : "stopped", error: message }; },
       });
     } catch {
       companion = undefined;
@@ -75,6 +75,10 @@ export function createCompanionControl(options: Parameters<typeof startDesktopCo
         if (!supported) throw new Error("Companion requires a local macOS 13+ arm64/x64 daemon");
         if (busy || stopping || stoppingTask) throw new Error("Companion operation is in progress");
         if (stopFailed) throw new Error("Retry stopping the companion before starting again");
+        if (input.action === "download") {
+          pending = undefined;
+          launch(false, true);
+        }
         if (input.action === "prepare") {
           if (status.state === "running") throw new Error("Stop the companion before preparing a build");
           pending = { token: randomUUID(), expires: Date.now() + 5 * 60_000 };

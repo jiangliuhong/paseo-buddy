@@ -148,3 +148,29 @@ test('synchronous stop failures release the lock so shutdown can be retried',asy
   assert.equal((await control.handle({action:'status'})).status.state,'stopped');
   await control.stop();
 });
+
+test('one download click authorizes download only; activation and cached restart do not',async()=>{
+ const starts=[];
+ const control=createCompanionControl({platform:'darwin',systemRelease:'22.0.0',arch:'arm64'},options=>{
+   starts.push(options);if(!options.allowDownload)options.onError('missing');
+   return {ready:Promise.resolve(),async stop(){}};
+ });
+ await settle();assert.equal(starts[0].allowDownload,false);
+ await control.handle({action:'download'});await settle();
+ assert.equal(starts[1].allowBuild,false);assert.equal(starts[1].allowDownload,true);
+ assert.equal((await control.handle({action:'status'})).status.state,'running');
+ await control.handle({action:'stop'});await control.handle({action:'start'});await settle();
+ assert.equal(starts[2].allowDownload,false);await control.stop();
+});
+test('download failure permits retry without another build confirmation',async()=>{
+ let attempts=0;
+ const control=createCompanionControl({platform:'darwin',systemRelease:'22.0.0',arch:'arm64'},options=>{
+   if(!options.allowDownload)options.onError('missing');
+   else if(++attempts===1)options.onError('download failed');
+   return {ready:Promise.resolve(),async stop(){}};
+ });
+ await settle();await control.handle({action:'download'});await settle();
+ assert.equal((await control.handle({action:'status'})).status.state,'error');
+ await control.handle({action:'download'});await settle();
+ assert.equal((await control.handle({action:'status'})).status.state,'running');await control.stop();
+});

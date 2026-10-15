@@ -5,6 +5,7 @@ import { homedir, release } from "node:os";
 import path from "node:path";
 import type { ChildProcess } from "node:child_process";
 import { execCommand, spawnProcess } from "@getpaseo/plugin/server";
+import { nativeAssetName, nativeReleaseBase, releaseBytes } from "./native-download.js";
 import { runNativeCompiler } from "./native-compiler.js";
 import { nativeSource } from "./native-source.js";
 import { readPaseoConfig, readPaseoServerId } from "./paseo-connection.js";
@@ -14,7 +15,7 @@ import type { BuddyNotification, BuddyState } from "../shared/agents.js";
 import type { NativeActionResult } from "../shared/native-actions.js";
 import { nativeActionBridge } from "./native-actions.js";
 
-export const companionVersion = "0.1.3-native.1";
+export const companionVersion = "0.1.4-native.1";
 const nativeRecipe = "appkit-bundle-1";
 const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -23,7 +24,7 @@ const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <key>CFBundleName</key><string>Paseo Buddy</string>
 <key>CFBundleExecutable</key><string>Paseo Buddy</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.3</string>
+<key>CFBundleShortVersionString</key><string>0.1.4</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><true/>
@@ -50,10 +51,12 @@ export function companionDirectory(cacheRoot: string, arch: string) {
 }
 export type BuildOptions = {
   allowBuild?: boolean;
+  allowDownload?: boolean;
   arch: string;
   cacheRoot: string;
   signal: AbortSignal;
   exec?: typeof execCommand;
+  fetch?: typeof fetch;
 };
 async function validate(directory: string, arch: string) {
   const app = path.join(directory, "Paseo Buddy.app");
@@ -73,7 +76,7 @@ async function validate(directory: string, arch: string) {
   await access(executable, constants.X_OK);
   return executable;
 }
-async function compileCompanion(options: BuildOptions) {
+async function provisionCompanion(options: BuildOptions) {
   if (!["arm64", "x64"].includes(options.arch)) throw new Error("Unsupported companion architecture");
   options.signal.throwIfAborted();
   await mkdir(options.cacheRoot, { recursive: true, mode: 0o700 });
@@ -81,12 +84,36 @@ async function compileCompanion(options: BuildOptions) {
   const destination = companionDirectory(options.cacheRoot, options.arch);
   try { return await validate(destination, options.arch); }
   catch { options.signal.throwIfAborted(); }
-  if (!options.allowBuild) throw new Error("Build confirmation required: no valid native companion cache");
+  if (!options.allowBuild && !options.allowDownload) throw new Error("Download confirmation required: click 下载并启动 to install the native companion");
   // Fail without changing an unknown/corrupt cache. User can remove this one directory and retry.
-  try { await lstat(destination); throw new Error(`Remove invalid native cache before rebuilding: ${destination}`); }
+  try { await lstat(destination); throw new Error(`Remove invalid native cache before retrying: ${destination}`); }
   catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error; }
   const temporary = await mkdtemp(path.join(options.cacheRoot, ".build-"));
   try {
+    if (options.allowDownload) {
+      const signal = AbortSignal.any([options.signal, AbortSignal.timeout(120000)]);
+      const base = `${nativeReleaseBase}/${nativeAssetName(options.arch)}`;
+      const markerBytes = await releaseBytes(`${base}.json`, 8192, signal, options.fetch);
+      const marker = JSON.parse(markerBytes.toString("utf8"));
+      if (marker.recipe !== nativeRecipe || marker.version !== companionVersion || marker.arch !== options.arch ||
+          marker.sourceSha256 !== sourceSha256 || !/^[a-f0-9]{64}$/.test(marker.binarySha256)) {
+        throw new Error("Native release does not match this plugin source/version/architecture");
+      }
+      const binary = await releaseBytes(base, 32 * 1024 * 1024, signal, options.fetch);
+      if (digest(binary) !== marker.binarySha256) throw new Error("Native release SHA-256 mismatch");
+      const contents = path.join(temporary, "Paseo Buddy.app/Contents");
+      await mkdir(path.join(contents, "MacOS"), { recursive: true, mode: 0o700 });
+      await writeFile(path.join(contents, "MacOS/Paseo Buddy"), binary, { mode: 0o700 });
+      await writeFile(path.join(contents, "Info.plist"), infoPlist, { mode: 0o600 });
+      await writeFile(path.join(temporary, "build.json"), markerBytes, { mode: 0o600 });
+      await validate(temporary, options.arch);
+      options.signal.throwIfAborted();
+      try { await rename(temporary, destination); }
+      catch (error) {
+        if (!(error instanceof Error && "code" in error && ["EEXIST", "ENOTEMPTY"].includes(String(error.code)))) throw error;
+      }
+      return await validate(destination, options.arch);
+    }
     const source = path.join(temporary, "Buddy.swift");
     const contents = path.join(temporary, "Paseo Buddy.app/Contents");
     await mkdir(path.join(contents, "MacOS"), { recursive: true, mode: 0o700 });
@@ -120,7 +147,7 @@ const builds = new Map<string, Promise<string>>();
 export async function ensureCompanion(options: BuildOptions) {
   const key = path.resolve(options.cacheRoot) + "/" + options.arch;
   const previous = builds.get(key);
-  const task = (async () => { await previous?.catch(() => {}); options.signal.throwIfAborted(); return compileCompanion(options); })();
+  const task = (async () => { await previous?.catch(() => {}); options.signal.throwIfAborted(); return provisionCompanion(options); })();
   builds.set(key, task);
   try { return await task; }
   finally { if (builds.get(key) === task) builds.delete(key); }
@@ -178,6 +205,7 @@ export function nativePublisher(child: ChildProcess) {
 }
 export function startDesktopCompanion(options: {
   allowBuild?: boolean;
+  allowDownload?: boolean;
   onError?: (message: string) => void;
   onExit?: () => void;
   platform?: string;
@@ -222,7 +250,7 @@ export function startDesktopCompanion(options: {
       controller.signal.throwIfAborted();
       phase = "build";
       const executable = await (options.ensure ?? ensureCompanion)({ arch, cacheRoot,
-        allowBuild: options.allowBuild === true, signal: controller.signal });
+        allowBuild: options.allowBuild === true, allowDownload: options.allowDownload === true, signal: controller.signal });
       controller.signal.throwIfAborted();
       phase = "launch";
       child = (options.spawn ?? spawnProcess)(executable, [], {
@@ -267,9 +295,9 @@ export function startDesktopCompanion(options: {
     } catch (error) {
       await actions?.stop();
       await stopChild();
-      if (!controller.signal.aborted) options.onError?.(error instanceof Error && /confirmation required|invalid native cache|Another Buddy/.test(error.message)
+      if (!controller.signal.aborted) options.onError?.(error instanceof Error && /confirmation required|invalid native cache|Another Buddy|Native release|Untrusted native release/.test(error.message)
         ? error.message : phase === "build"
-          ? "Native build failed. Check Apple developer tools, available disk space and cache permissions, then review a fresh build confirmation."
+          ? options.allowDownload ? "下载失败，请检查 GitHub 连接后重试下载并启动。" : "Native build failed. Check Apple developer tools, available disk space and cache permissions, then review a fresh build confirmation."
           : phase === "launch"
             ? "Native window could not start. Use a local logged-in macOS desktop session and check companion process/cache permissions."
             : "Companion initialization failed. Check Paseo settings and the local daemon connection, then retry.");

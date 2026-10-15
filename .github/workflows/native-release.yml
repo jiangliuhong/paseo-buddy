@@ -1,0 +1,45 @@
+name: Native release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run check
+      - run: npm run native:check
+      - run: node scripts/package-native-release.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-release
+          path: build/release/*
+          if-no-files-found: error
+  publish:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-release
+          path: release
+      - uses: actions/checkout@v4
+      - name: Prepare release notes
+        run: cp "docs/releases/${GITHUB_REF_NAME#v}.md" release-notes.md
+      - name: Publish verified native release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" release/* --verify-tag --title "Paseo Buddy $RELEASE_TAG" --notes-file release-notes.md

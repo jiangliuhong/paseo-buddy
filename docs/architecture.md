@@ -2,10 +2,10 @@
 
 ## Runtime boundaries
 
-- `index.server.ts` and `server/`: Node-only daemon plugin, read-only paginated snapshot RPC, settings, native build/process controller and public SDK observation.
+- `index.server.ts` and `server/`: Node-only daemon plugin, read-only paginated snapshot RPC, settings, native download/build/process controller and public SDK observation.
 - `index.client.tsx` and `client/`: Paseo-hosted settings UI using official `useRpc`, `useSettings` and native settings components. No DOM, Node or compiler access from the client.
 - `shared/`: runtime-neutral Zod settings/RPC contracts and normalized Agent types.
-- `server/native-source.ts`: complete embedded Swift/AppKit source, included in the server bundle. The locally compiled child receives normalized state/events/action results on stdin; stdout carries READY and a single bounded mark-read command shape. No Electron app or downloaded runtime remains.
+- `server/native-source.ts`: complete embedded Swift/AppKit source, included in the server bundle. The native child receives normalized state/events/action results on stdin; stdout carries READY and a single bounded mark-read command shape. No Electron app or downloaded runtime remains.
 
 The SDK declarations in `@getpaseo/plugin`/`@getpaseo/client` 0.11.1 and installed Paseo 0.11.2 define the settings and lifecycle APIs used here. No unsupported deep links or lifecycle fields are introduced.
 
@@ -29,13 +29,15 @@ The installed Paseo 0.11.2 bundle registers the `paseo` scheme and uses the same
 
 AppKit validates scheme/host, exact route shape, lack of credentials/port/query/fragment and matching decoded agent ID before showing an Open in Paseo button. Only explicit button activation calls `NSWorkspace.open`; snapshots and notification arrival cannot activate Paseo. Opening the list never changes attention; a selected conversation follows Paseo's normal read behavior. Desktop routing and keyboard activation require real GUI acceptance.
 
-## Build authorization and cache
+## Native releases and cache
 
-Activation attempts only a validated cache. `companion.control` preparation returns version, source SHA-256, architecture and requirements without invoking tools. A separate confirm consumes an ephemeral five-minute token; cancel/stop/disable revoke it. No authorization preference is persisted. Failed confirmed builds require another explicit confirmation. The settings controller rejects simultaneous operations, rejects rebuild preparation while running and waits for stop completion. Process lifetime guards suppress stale callbacks. Disable joins an existing shutdown; synchronous start/stop failures remain retryable, and failed shutdown prevents another launch until stop succeeds. macOS versions below 13 are rejected before tools/process actions.
+Activation attempts only a validated cache, without fetching or compiling. The `download` settings action directly authorizes downloading and starting the current release; a second confirmation is not required. `server/native-download.ts` fixes the repository and release tag (v0.1.4), with separate arm64/x64 executable and JSON manifest assets. Downloads use HTTPS, no credentials, manually checked GitHub redirects, a 120-second deadline, 8 KiB manifest and 32 MiB binary limits. The manifest must match the plugin's version, source SHA-256, recipe and architecture; its binary digest must match before publication or execution. SHA-256 is an integrity check trusting the GitHub release publisher, not independent signing or notarization.
 
-After confirmation the builder checks the selected Apple developer directory, writes embedded Swift into a private temporary directory, invokes `xcrun swiftc` with fixed argv/macOS 13 target and no shell, and atomically renames the result into a source-hash/architecture cache. It never downloads binaries, source or development tools. The executable and manifest must be regular files under a real cache directory; source/version/architecture and binary SHA-256 must match before launch. Compiler timeout/cancellation cleans temporary output. The Node process serializes builds per cache/architecture; separate processes can build concurrently but atomic publication reuses a valid winner. Invalid existing cache directories are never replaced/deleted automatically.
+A private staging directory receives only the binary, the plugin's exact Info.plist and validated manifest. There is no archive extraction. An atomic rename publishes a verified cache; competing processes reuse only a valid winner. Invalid existing directories are preserved for explicit repair. Download failures clean staging and allow retry. Stop/disable abort downloads. In-process operations serialize per cache/architecture. Normal activation never downloads automatically. Unsupported platforms are rejected before any fetch/process action.
 
-Cache root: `~/Library/Caches/Paseo Buddy/native`. Legacy Electron caches are neither launched nor removed. Native caches are retained until explicit user cleanup. Local compilation is not notarization or independent audit; the actual source and process behavior remain reviewable.
+Cache root: `~/Library/Caches/Paseo Buddy/native`. Cache executable, manifest and bundle directories must be regular, non-symlink files/directories with matching source/version/architecture and binary SHA-256 before launch. Legacy Electron caches are neither launched nor removed. No Gatekeeper modification, quarantine removal, administrator access or developer-tool installation occurs.
+
+Developer builds retain the fixed-argv Apple compiler path and legacy prepare/confirm RPC compatibility; the hosted settings UI exposes the download action. `scripts/package-native-release.mjs` cross-compiles both architectures and exports binary/manifest pairs. The tag workflow checks and builds on macOS, uploads artifacts, and publishes a release only after successful checks/builds. All four assets must be available before users can download the matching companion.
 
 ## Native process and IPC
 

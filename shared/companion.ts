@@ -14,6 +14,7 @@ export const companionControlRpc = defineRpc({
     z.object({ action: z.literal("confirm"), token: z.string() }),
     z.object({ action: z.literal("cancel") }),
     z.object({ action: z.literal("start") }),
+    z.object({ action: z.literal("download") }),
     z.object({ action: z.literal("stop") }),
   ]),
   output: z.object({

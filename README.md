@@ -4,7 +4,7 @@ A native macOS floating companion for Paseo agents, built with Swift/AppKit. Red
 
 ## Install and start
 
-Requires Paseo ≥ 0.11.1, npm for plugin preparation, **macOS 13+**, and **Apple Command Line Tools or Xcode** on the local daemon machine. The daemon must run in your logged-in desktop session. Apple Silicon and Intel targets are supported; Intel native execution still needs hardware acceptance testing.
+Requires Paseo ≥ 0.11.1, npm for plugin preparation, and **macOS 13+** on the local daemon machine. The daemon must run in your logged-in desktop session. Apple Silicon and Intel release binaries are supported; Intel native execution still needs hardware acceptance testing.
 
 In Paseo Settings → Plugins, install `git:jiangliuhong/paseo-buddy`, or use:
 
@@ -12,11 +12,11 @@ In Paseo Settings → Plugins, install `git:jiangliuhong/paseo-buddy`, or use:
 paseo plugin add git:jiangliuhong/paseo-buddy
 ```
 
-Enable the plugin, then open **Settings → Plugins → Paseo Buddy → 悬浮窗口 → Build and start native companion**. Review its version, bundled Swift source identity, SHA-256 and requirements, then select **Confirm build and start**. Cancel does not compile or launch anything. First compilation can take several minutes.
+Enable the plugin, then open **Settings → Plugins → Paseo Buddy → 悬浮窗口 → 下载并启动**. This button downloads the matching native executable from this repository's GitHub Release, verifies version, architecture, bundled-source identity and SHA-256, and starts the floating window. No Xcode, Command Line Tools, local compilation, separate application download or extraction is required. Later enables reuse a valid cache without network access. Source/version changes require clicking the button again. The settings also offer cached start and stop. Download failures can be retried with the same button.
 
-There is **no Electron dependency, separate application download, ZIP extraction or DMG installation**. Swift source is included in the plugin's reviewed Git revision at [server/native-source.ts](server/native-source.ts); it is compiled locally with Apple's tools only after confirmation. The plugin never installs developer tools, requests administrator access, bypasses Gatekeeper or downloads a compiler. Install missing tools yourself using [Apple's instructions](https://developer.apple.com/documentation/xcode/installing-the-command-line-tools/).
+Release binaries must be published before the matching plugin can download them. The current code targets **v0.1.4**; the version-tag workflow validates, builds and publishes all four assets. Until published, the button reports that the release is unavailable. Downloads are HTTPS-only and restricted to GitHub release hosts. SHA-256 detects content corruption; it is not Apple Developer signing or notarization. The plugin never changes Gatekeeper or removes quarantine.
 
-A valid build matching the source/architecture and cached executable SHA-256 starts on later plugin enables without recompilation. Source changes require fresh confirmation. Settings include **Start cached companion**, **Stop companion**, opacity, size, **显示图标**, **显示文本** and **自定义文本**. Under **悬浮窗口 → 外观**, text can be saved as a single line of up to 32 characters; disabling text preserves the saved label. The pill automatically shrinks when branding or zero-count badges are hidden, keeping a small clickable capsule when all content is hidden. Disable stops only the owned native child and cancels pending compilation. Native output is cached under `~/Library/Caches/Paseo Buddy/native`; old Electron caches/settings are left untouched. Quit old Electron copies manually before switching.
+Appearance settings include opacity, size, **显示图标**, **显示文本**, **自定义文本**, and list height bounds. Native output is cached under `~/Library/Caches/Paseo Buddy/native`. Disable cancels downloads and stops only the owned native child. Existing unknown/invalid caches and old Electron files are preserved; quit old Electron copies manually before switching.
 
 See [OVERVIEW.md](OVERVIEW.md) for privacy, retry/rebuild instructions and troubleshooting, and [docs/review-readiness.md](docs/review-readiness.md) for validation limits and screenshot status.
 
