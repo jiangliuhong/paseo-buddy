@@ -1,114 +1,46 @@
 # Development
 
-## Prerequisites
-
-- Node.js 22+ and npm
-- Paseo CLI and daemon
-- macOS for desktop overlay development
-
-## Plugin and desktop development
+Requires Node.js 22+, npm and Paseo. Native compilation additionally needs macOS 13+ and Apple Command Line Tools or Xcode. The package has no Electron/workspace dependencies or install scripts. Do not add arbitrary shell execution, new listeners or credential forwarding.
 
 ```sh
-git clone https://github.com/jiangliuhong/paseo-buddy.git
-cd paseo-buddy
-npm install
-npm run typecheck
-```
-
-The plugin exposes a read-only `agents.snapshot` RPC using the daemon-scoped public SDK. On local macOS it also downloads and launches its lifecycle-owned companion. Source development can still launch the desktop separately with `npm run electron:start`.
-
-## Verified integration
-
-- Installed Paseo: 0.11.2; official plugin/client SDK declarations: 0.11.1.
-- `agents.list({ filter: { includeArchived: false }, subscribe: {} })` supplies an authoritative directory and an owned subscription.
-- Subscription callbacks deliver initial snapshots before buffered `agent_update` upserts/removals. Initial/reconnect snapshots replace the whole local map.
-- Count only `status === "running"` agents with no pending permissions as running. Unarchived `idle`/`closed` agents with `requiresAttention === true`, `attentionReason === "finished"`, and no pending permissions count as completed unread. The full unarchived agent directory is observed so completion and subsequent read updates remain visible. Pending permissions are shown separately. Rows display `${projectName} - ${workspaceName}` from the agent directory’s `project` placement, followed by agent `title` with provider fallback; elapsed time uses `activeTurn.startedAt` (unknown time displays `—`).
-- Main process reads the daemon endpoint and existing local credential from `PASEO_HOME` (default `~/.paseo`). Only explicit loopback TCP endpoints are supported. Unix sockets and public bind addresses are rejected.
-- The public SDK's `authHeader` Bearer compatibility path was verified against the installed daemon. The credential stays in memory, never enters renderer IPC, and is re-read for each reconnect.
-- Buddy recreates its SDK client after disconnects with backoff from 1 second to 30 seconds. Connection health is checked once per second. The disconnected UI clears stale agents and displays `—` for the count.
-- Truncated subscription snapshots are rejected rather than showing a partial count. The plugin snapshot RPC follows all returned page cursors.
-- Notifications, conversation navigation, Apple Developer signing, and notarization remain unimplemented.
-
-Official SDK behavior: [subscriptions and reconnect](https://paseo.sh/docs/sdk/events).
-
-```sh
-npm run check          # plugin typecheck, state/reconnect/geometry tests, runtime + renderer build
-npm run runtime:build  # compile server/shared modules for the desktop main process
-npm run electron:start
-# Select another local Paseo daemon home:
-PASEO_HOME=/path/to/home npm run electron:start
-```
-
-A read-only smoke test with the completed adapter received real running agents, titles, and turn timestamps from the installed daemon. Automated reconnect tests use controlled SDK clients; no live daemon restart or live permission/turn mutation was performed. Native macOS window behavior still needs a GUI smoke test.
-
-## Plugin installation
-
-Enable plugins explicitly in Paseo Settings after reviewing trusted-code implications, then:
-
-```sh
-paseo plugin add git:jiangliuhong/paseo-buddy
-paseo plugin ls
-paseo plugin logs paseo-buddy
-```
-
-Never enable the global plugin switch automatically.
-
-## Compact desktop window
-
-Without a saved position, startup places the compact window at the primary display’s bottom-right work-area corner, inset 30px from the right and bottom. A valid saved position still takes precedence.
-
-The visible pill is 88 × 36 px inside a 104 × 52 px transparent window; the popover window is 320 × 340 px. Keep CSS dimensions and `window-bounds.cjs` geometry in sync. On macOS, `app.dock.hide()` hides the Dock icon, and the window opens with `showInactive()` after rendering. Quit from the pill’s right-click menu. A previous isolated macOS Electron smoke test verified `dock.isVisible() === false`, the compact/expanded window geometry; both rendered captures were visually reviewed.
-
-The whole pill uses pointer capture and narrow drag-start/drag-end IPC. Main-process cursor sampling applies a 4px drag threshold; a drag never toggles the panel. Screen placement uses full display bounds and `enableLargerThanScreen` disables AppKit’s work-area clamping, so the pill can reach the actual screen bottom. The `pop-up-menu` window level keeps it visible above the Dock. The panel opens above a bottom-positioned pill and keeps its anchor while dragging. Positive running counts are red; completed-unread counts are green. Both appear together when needed, and zero/disconnected counts are neutral. Buddy never clears Paseo attention state.
-
-An isolated macOS Electron gesture test verified clicks at both padding edges, the icon and the count; drag release did not open the panel. The actual window reached y=1100 with height=52 on a 1152px display (beyond its work area), and expanding there opened the panel above. The live count was red and only one pill icon was present.
-
-## Desktop startup troubleshooting
-
-`npm run electron:start` builds the desktop workspace before launching Electron. Errors such as `TS7016` for React or `TS2307` for `react-dom/client`, `lucide-react`, or Vite indicate missing workspace dependencies, including development packages.
-
-From the repository root, run:
-
-```sh
-npm install --include=dev
-npm ls react react-dom lucide-react vite @types/react @types/react-dom electron --workspace @paseo-buddy/desktop
+npm ci --ignore-scripts
 npm run check
-npm run electron:start
+npm run native:check
+npm run native:build
+npm run native:start
+npm run daemon:check
 ```
 
-An install performed before the desktop workspace was added must be refreshed. `--include=dev` also includes the compiler and type packages when npm is configured to omit development dependencies. A successful build verifies compilation; confirm the floating window on macOS separately.
+`check` runs TypeScript, Node state/reconnect/settings/controller/build tests and esbuild server/client bundles. It never compiles or launches a native companion. There is no standalone lint configuration. `native:check` compiles the actual embedded AppKit definitions and tests pill hit-testing, anchor geometry and decoding in a temporary executable without creating a window. The hit-testing regression covers collapsed and expanded pill positions at 0.75×, 1× and 1.5× scale; keep AppKit’s inherited hit test, which converts parent coordinates correctly after expansion. `native:build` explicitly builds the current host architecture under `build/native`; `native:start` explicitly compiles/reuses and starts an owned native process observing the selected local daemon, with explicit user-triggered mark-read actions. Ctrl-C stops it. `daemon:check` connects read-only to the selected local daemon, closes only its own SDK connection and verifies a fresh snapshot after reconnect. It prints aggregate counts, not names, paths or credentials, and neither starts agent tasks nor sends desktop notifications. It needs loopback access; native window tests additionally need a logged-in macOS desktop session. Both native developer commands authorize a local build directly; normal plugin activation must still require settings confirmation for a missing cache.
 
-## Development rules
+The plugin manifest prepares runtime dependencies using `npm ci --omit=dev --ignore-scripts`. Paseo compiles the TypeScript entries itself. `npm run build` creates extra bundles under `build/plugin` for development verification; these are not downloaded by the plugin. GitHub CI checks the plugin on Linux/macOS and performs native compile/model checks on macOS. There is no automatic binary Release publisher.
 
-- Keep daemon-only Node code in `server/`.
-- Keep cross-runtime types in `shared/`.
-- Keep Electron-specific code in `apps/desktop/`.
-- Do not claim a feature works until tested on a real daemon.
-- Prefer event updates plus authoritative snapshots over polling alone.
-- Keep the desktop renderer free of Node.js privileges.
+## Source and APIs
 
-Unread semantics were checked against the installed Paseo 0.11.2 attention projection and `clearAgentAttention` implementation: clearing attention persists the read state and emits an updated agent snapshot. State/reconnect tests cover initial unread hydration, completion, duplicate updates, read clearing, rerun, and archival.
+The entire Swift source is the raw string in `server/native-source.ts`; editing it changes the cache hash and requires a fresh build confirmation. Keep it embedded so the host-compiled server bundle does not depend on runtime paths to the source checkout. Only AppKit/Foundation/Darwin/UserNotifications system frameworks are used. Compile fixed targets `arm64-apple-macosx13.0` or `x86_64-apple-macosx13.0`; no package manager/compiler is launched from user input.
 
-Name previews use `src/name-tooltip.tsx` rather than native `title` delays. Only truncated names activate the preview (120ms hover, immediate keyboard focus). A body portal avoids clipping by the scrolling agent list; measured placement keeps the preview within the window, including when the panel opens above the pill.
+Use the official installed SDK declarations before changing integrations. Current code targets plugin/client SDK 0.11.1 and installed Paseo 0.11.2. `agents.list({filter:{includeArchived:false},subscribe:{}})` supplies the owned subscription with initial snapshot before `agent_update` events. Completion notifications use `agents.ref(agent).timeline.subscribe`, documented as live-only by the installed SDK. Only `turn_completed` and `turn_failed` with explicit `turnId` are accepted; idle/attention state cannot imply a notification. Subscription establishment/live errors trigger reconnection and cleanup. Conversation routes use the official `@getpaseo/protocol/agent-deep-link` helper, pinned directly at 0.11.1. The installed Paseo 0.11.2 bundle contains the same builder/parser and registers the `paseo` URL scheme.
 
-An isolated Electron renderer check with stable fixture data verified hover previews within 170ms (120ms configured delay), exact full text, viewport bounds, immediate focused-label previews, and Escape/list-scroll dismissal.
+The observation adapter belongs to Node, not Swift. `server/paseo-connection.ts` validates loopback PID-file endpoints and keeps the daemon's local credential only in Node memory. The native stdin protocol contains only normalized identity/display/status/time fields, official conversation routes and bounded completion/failure notices. Test backpressure and disconnect clearing when changing it. Appearance settings retain their schema/revision and private mirror contracts.
 
-Companion bootstrap tests inject downloads and child processes so `npm run check` never installs or launches software. `contribute()` returns async cleanup that stops the owned child. The default bootstrap uses the pinned release, cancellable streaming SHA-256 verification, macOS app validation, and fixed executable argv. A managed app receives only a narrow environment, and monitors `PASEO_BUDDY_PARENT_PID` to avoid an orphan after daemon/plugin crashes.
+Directory pagination uses the declared SDK `page`, `sort` and `signal` options. Keep the subscription attached while loading later pages, then replay buffered events before publishing. The shared collector rejects missing/cyclic cursors and directories above 5,000 entries. Tests cover page/update races, replacement snapshots, cancellation, failure recovery and repeated-failure backoff. Do not publish partial counts or reset retry delay on every short-lived connection.
 
-The v0.1.1 local native companion smoke test streamed and checksummed the built ZIP, extracted it with ditto, validated bundle ID/signature, opened a managed window connected to the real daemon, reused its cache without downloading again, confirmed a duplicate launch exited, and confirmed controller cleanup terminated its child. This test used a temporary cache and did not install a public Git plugin or modify Paseo trust settings.
+Notification identities are SHA-256 of `[agentId, turnId]`. The observer retains 10,000 recent identities across reconnects; the native preferences retain 1,024 across child restarts. Notices contain a bounded agent name and completed/failed outcome, never diagnostic text. The stdin publisher keeps notices in a separate 256-message FIFO while coalescing snapshots; an exhausted queue drops additional notices. The context menu now contains only Quit and provides no authorization prompt; delivery requires existing system permission. Test snapshot silence, duplicate terminal events, cancellation, missing IDs, watch disposal and stalled-reader behavior. `native:check` validates the notification payload model without asking for authorization or delivering system notifications.
 
-## Paseo appearance settings
+## Toolchain troubleshooting
 
-Before implementation, support was verified in the installed Paseo 0.11.2 client bundle (`addSettingsScreen`, settings screen registry), daemon settings change dispatcher, official plugin SDK declarations, and [official settings documentation](https://paseo.sh/docs/plugins/reference#settings-screens).
+Verify `xcode-select -p` and `xcrun swiftc --version`, then compile a minimal `import AppKit` file. Installation/repair of Apple tools is an explicit system administration task outside plugin behavior. The plugin never modifies module maps, installs Xcode, invokes sudo, changes Gatekeeper or clears quarantine. The development machine's earlier duplicate SwiftBridging module-map issue was repaired separately with user authorization; no such workaround is embedded in this repository.
 
-The settings entry is **Settings → Plugins → Paseo Buddy → 悬浮窗口**. Opacity is 30–100% (100% is fully opaque), and size presets are 75%, 100%, 125%, and 150%. The host settings document uses `id: display`, `scope: host`, and version 1. The server mirror is temporary, private, sanitized, atomically replaced, and owned by plugin cleanup; it is not the persistent store. Failed/stale writes are handled by the SDK revision contract, and invalid stored data exposes retry/reset controls.
+Native cache validation fails closed. A corrupt/unknown current directory is preserved for explicit removal, and confirmed retry is allowed after repair. Old Electron caches/preferences remain untouched. Parent stop and EOF should leave no native process or `.build-*` temporary directory. See [review-readiness.md](review-readiness.md) for final validation evidence and pending manual scenarios.
 
-Appearance settings require the matching v0.1.2 companion because v0.1.1 has no appearance-file reader. The plugin’s pinned companion version must match the release assets. Developing these controls used isolated tests without modifying the installed plugin.
+The settings controller guards callbacks by process lifetime, joins concurrent shutdown and rejects new starts after failed shutdown until stop succeeds. Build preparation is disabled while running. Confirm consumes and hides its offer even on error, so retry starts with fresh preparation. Production start/build offers reject systems older than macOS 13 before invoking tools or starting a child. Native keyboard controls retain button focus across state rebuilds and handle Escape at panel level; display changes re-clamp the pill to the full physical display, including the Dock area. Dragging changes the pill anchor; the expanded list is then laid out above or below it with no overlap. `native:check` covers bottom-edge anchoring despite a simulated Dock reservation, negative-coordinate displays, constrained screen heights and all supported scale values. Native surfaces and SF Symbols provide the styling without extra assets or web runtimes.
 
-Validation: the installed Paseo compiler successfully compiled both new client and server entries without executing plugin code or changing trust settings. An isolated source-app test restored 60% opacity/125% size, updated live to 40%/150%, verified scaled expanded bounds, then resized to 75% and collapsed without moving its anchor. The first-launch default remained bottom-right. Automated tests cover schema bounds, hydration races, private mirror cleanup, atomic replacements, and scaled geometry.
+Pill identity settings use additive defaults in display schema version 1: `showIcon: true`, `showText: true`, `customText: "Buddy"`. Existing opacity/scale settings hydrate unchanged. Text editing stays local until the explicit save action; switches save through the existing revision-checked host API. The private appearance mirror includes these validated fields, and native polling applies them live. `native:check` covers old/new appearance decoding, all icon/text combinations, zero/one/two count badges, text width limits, the minimum clickable capsule and anchor preservation across dynamic widths. Node tests cover legacy defaults, validation, mirror updates and stale initial reads. The standalone `native:start` developer window uses default identity settings; Paseo-hosted settings control the companion owned by the activated plugin.
 
-## Cache cleanup (v0.1.3)
+The ChatGPT-style toolbar keeps a minimum 44-point trailing toggle section with a manually stroked round-cap chevron and a divider only when branding exists. Red running and green unread counts overlay its top-right corner; the middle waveform/count section has been removed. One badge adds no width; two badges use only the extra width required to maintain a 3-point separation. Zero counts reserve no badge area. Native layout checks verify toggle width, badge containment, hidden-section collapse and anchor stability. Hover tracking invalidates the pill only when entering/leaving the toggle region.
 
-The companion cache is `~/Library/Caches/Paseo Buddy/companions`. Update/startup cleanup retains the current verified version and removes only marked older caches after confirming the new executable is running. Running older apps/helpers, current-version caches for another architecture, newer versions, symlinks, unknown files, and in-progress downloads are retained. A failed download/start or failed process scan leaves old caches intact.
+Read actions are isolated in `server/agent-attention.ts` and `server/native-actions.ts`. The installed 0.11.1 high-level API has no read method; use the declared, exported low-level `DaemonClient.clearAgentAttention` only through this adapter, verified against the 0.11.2 app bundle. Never invent `agents.markRead` or conditional attention fields. Test fresh-state/timestamp checks, wrong-host rejection, cancellation, timeouts, duplicate requests and fixed credential-free errors. The child cannot select an endpoint, credential, shell or arbitrary RPC. The native protocol smoke check verifies command/result JSON encoding as well as appearance and navigation. Do not mark real user conversations read as an automated smoke test; use injected SDK clients and reserve real mutation acceptance for an explicitly chosen completion.
 
-`/bin/ps` is invoked with fixed argv and no shell; process command lines are used transiently for in-use checks and are never logged or persisted. Cleanup is deferred until after window startup, cancelled on plugin stop, and reports only removed cache directory names. Automated tests use isolated temporary caches and process inventories. This behavior is included from v0.1.3.
+The pill intentionally draws no blue focus border: `focusRingType` is `.none` and no custom keyboard-focus stroke is drawn. Keep its first-responder and keyboard handlers intact; the toggle uses the same quiet neutral fill for hover and keyboard focus.
+
+Agents 列表按实际内容自适应高度，默认最小 140 pt、最大 360 pt（保留原高度上限）；插件外观设置可调整上下限，随整体大小同比例缩放。内容超过上限时滚动，屏幕空间不足时进一步收缩。右键菜单仅保留 **Quit Paseo Buddy**；Tab、Space/Return、Escape 和 Shift-F10 键盘操作仍可用。

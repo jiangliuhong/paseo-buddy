@@ -6,7 +6,7 @@ const settings = () => ({async read(){return {status:'ready',revision:'r1',value
 
 test('plugin RPC queries the daemon-scoped SDK and follows snapshot pagination', async (t) => {
   let handler;
-  const cleanup=contribute({registerSettings:settings,handle(contract, fn) {assert.equal(contract.name,'agents.snapshot');handler=fn;}}, {startCompanion:()=>({ready:Promise.resolve(),async stop(){}})});
+  const cleanup=contribute({registerSettings:settings,handle(contract, fn) {if(contract.name==='agents.snapshot')handler=fn;}}, {startCompanion:()=>({ready:Promise.resolve(),async stop(){}})});
   t.after(cleanup);
   const calls=[];
   const agent=(id)=>({id,cwd:'/work/project',title:id,provider:'codex',status:'running',pendingPermissions:[]});
@@ -26,6 +26,7 @@ test('plugin RPC queries the daemon-scoped SDK and follows snapshot pagination',
 
 test('plugin owns companion startup and stops it on disable/reload',async()=>{
   let starts=0;let stops=0;
-  const cleanup=contribute({registerSettings:settings,handle(){}},{startCompanion:()=>{starts++;return {ready:Promise.resolve(),async stop(){stops++;}};}});
-  assert.equal(starts,1);await cleanup();assert.equal(stops,1);
+  const cleanup=contribute({registerSettings:settings,handle(){}},{startCompanion:options=>{assert.equal(options.allowBuild,false);starts++;return {ready:Promise.resolve(),async stop(){stops++;}};}});
+  const expected=process.platform==='darwin'&&['arm64','x64'].includes(process.arch)?1:0;
+  assert.equal(starts,expected);await cleanup();assert.equal(stops,expected);
 });

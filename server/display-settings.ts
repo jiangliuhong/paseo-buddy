@@ -4,7 +4,7 @@ import path from "node:path";
 import type { PluginSettings } from "@getpaseo/plugin/server";
 import { displaySchema } from "../shared/display-settings.js";
 
-/** A private, appearance-only mirror for the lifecycle-owned Electron child. */
+/** A private, appearance-only mirror for the lifecycle-owned native child. */
 export function createDisplayMirror(settings: PluginSettings<typeof displaySchema>, directory = tmpdir()) {
   const root = mkdtempSync(path.join(directory, "paseo-buddy-display-"));
   const file = path.join(root, "display.json");

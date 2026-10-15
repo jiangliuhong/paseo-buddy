@@ -1,0 +1,75 @@
+import type { ChildProcess } from "node:child_process";
+import type { BuddyState } from "../shared/agents.js";
+import { nativeMarkReadSchema, type NativeActionResult, type NativeMarkRead } from "../shared/native-actions.js";
+import { markAgentRead } from "./agent-attention.js";
+
+/** The owned child may request only an explicit read action for a currently displayed completion. */
+export function nativeActionBridge(child: ChildProcess, options: {
+  state: () => BuddyState;
+  reply: (result: NativeActionResult) => void;
+  markRead?: typeof markAgentRead;
+}) {
+  let stopped = false;
+  let buffer = Buffer.alloc(0);
+  let discarding = false;
+  const seen = new Set<string>();
+  const pending = new Map<string, { controller: AbortController; task: Promise<void> }>();
+  function reply(command: NativeMarkRead, success: boolean, error: string | null) {
+    if (!stopped) options.reply({ requestId: command.requestId, agentId: command.agentId, success, error });
+  }
+  function receive(command: NativeMarkRead) {
+    if (stopped || seen.has(command.requestId)) return;
+    seen.add(command.requestId);
+    if (seen.size > 256) seen.delete(seen.values().next().value!);
+    const state = options.state();
+    const agent = state.agents.find(agent => agent.id === command.agentId && agent.status === "completed_unread");
+    if (state.connection !== "connected" || !agent || (agent.attentionTimestamp ?? null) !== command.attentionTimestamp) {
+      reply(command, false, "This completion changed. Refresh the list and try again."); return;
+    }
+    if (pending.has(command.agentId) || pending.size >= 8) {
+      reply(command, false, "A read operation is in progress. Please try again."); return;
+    }
+    const controller = new AbortController();
+    const task = Promise.resolve().then(async () => {
+      if (stopped) return;
+      try {
+        await (options.markRead ?? markAgentRead)({ agentId: command.agentId, attentionTimestamp: command.attentionTimestamp,
+          serverId: state.serverId, signal: controller.signal });
+        reply(command, true, null);
+      } catch { reply(command, false, "Could not mark as read. Refresh the list and try again."); }
+      finally { pending.delete(command.agentId); }
+    });
+    pending.set(command.agentId, { controller, task });
+  }
+  const data = (chunk: Buffer) => {
+    if (stopped) return;
+    if (chunk.length > 8192) { void stop(); return; }
+    if (discarding) {
+      const newline = chunk.indexOf(10);
+      if (newline < 0) return;
+      chunk = chunk.subarray(newline + 1); discarding = false;
+    }
+    buffer = Buffer.concat([buffer, chunk]);
+    for (;;) {
+      const newline = buffer.indexOf(10);
+      if (newline < 0) break;
+      const line = buffer.subarray(0, newline); buffer = buffer.subarray(newline + 1);
+      if (line.length > 2048) continue;
+      try {
+        const parsed = nativeMarkReadSchema.safeParse(JSON.parse(line.toString("utf8")));
+        if (parsed.success) receive(parsed.data);
+      } catch { /* Invalid child output is never an executable command or arbitrary RPC. */ }
+    }
+    if (buffer.length > 2048) { buffer = Buffer.alloc(0); discarding = true; }
+  };
+  child.stdout?.on("data", data);
+  async function stop() {
+    stopped = true; buffer = Buffer.alloc(0);
+    child.stdout?.off("data", data);
+    const tasks = [...pending.values()];
+    for (const { controller } of tasks) controller.abort();
+    await Promise.allSettled(tasks.map(({ task }) => task));
+    pending.clear();
+  }
+  return { stop };
+}

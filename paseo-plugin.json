@@ -1,6 +1,6 @@
 {
   "id": "paseo-buddy",
-  "description": "Daemon-side integration for the Paseo Buddy floating desktop companion",
+  "description": "Native macOS floating agent monitor, locally built from reviewable Swift/AppKit source",
   "requirements": {
     "paseo": ">=0.11.1"
   },
@@ -10,8 +10,7 @@
       "npm",
       "ci",
       "--omit=dev",
-      "--ignore-scripts",
-      "--workspaces=false"
+      "--ignore-scripts"
     ]
   ],
   "icon": "assets/icon.png"

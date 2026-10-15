@@ -10,11 +10,18 @@ export const buddyAgentSchema = z.object({
   status: z.enum(["running", "waiting_permission", "completed_unread"]),
   turnId: z.string().nullable(),
   startedAt: z.string().nullable(),
+  attentionTimestamp: z.string().nullable().optional(),
 });
 export type BuddyAgent = z.infer<typeof buddyAgentSchema>;
+export type BuddyNotification = {
+  id: string;
+  agentName: string;
+  outcome: "completed" | "failed";
+};
 export type BuddyState = {
   connection: "connecting" | "connected" | "disconnected";
   agents: BuddyAgent[];
+  serverId?: string;
 };
 export const agentsSnapshotRpc = defineRpc({
   name: "agents.snapshot",

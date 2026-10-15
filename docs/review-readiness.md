@@ -1,0 +1,103 @@
+# Registry review readiness
+
+Review: https://github.com/getpaseo/plugins/pull/299#pullrequestreview-5478845069
+
+## Current implementation
+
+The source refactor is complete locally: the working tree has migrated from the published Electron companion to embedded Swift/AppKit source, and all V1 feature paths have implementations. This is a code-completion statement, not a claim of full hardware acceptance or Registry publication. Older release/download validation does not describe this revision. No separate companion binary, ZIP or runtime is downloaded.
+
+- Activation starts only a verified cache matching the native recipe, version, architecture, source SHA-256 and executable SHA-256.
+- Settings preparation shows the native version, source path/hash, architecture and Apple developer-tool requirements. A distinct confirmation authorizes compilation and startup; preparation/cancel cannot compile or launch.
+- Authorization is ephemeral, single-use and expires after five minutes. Stop/disable revokes it, cancels compilation and stops only the owned process. Failed builds require fresh confirmation.
+- Compilation uses bundled source and fixed Apple tool arguments without a shell, privilege elevation or developer-tool installation. Private temporary builds are cleaned; unknown/corrupt caches and legacy Electron caches are preserved.
+- The native child receives normalized snapshots over stdin. Credentials and SDK observation stay in Node; no new listener is opened. The owned process must report READY before observation starts.
+- Paginated directory snapshots load completely before display. Buffered updates are replayed after loading. Invalid cursors, failed pages, oversized directories and buffer overflow clear state and reconnect; late superseded results cannot overwrite a new snapshot.
+- Opacity/scale settings apply live; native geometry preserves the pill anchor. Keyboard controls and the grouped agent list are implemented. Opening Buddy never clears daemon attention.
+
+Completion/failure notification delivery is implemented for live SDK terminal events with explicit turn IDs. The pill context menu contains only Quit Paseo Buddy; no authorization request is offered. Existing macOS permission is required for delivery; denied permission does not block the overlay. Conversation navigation uses the official agent deep-link helper with the selected daemon identity, and opening this project's conversation has been verified in the real desktop app. Actual notification authorization/banner delivery remains pending. No commit, tag, Release, Registry edit, push or reviewer reply has been performed for this working tree.
+
+## Automated evidence
+
+The installed application reports Paseo 0.11.2; the repository uses official plugin/client SDK declarations at 0.11.1. The SDK declares directory pagination, creation-time sort, request AbortSignal and owned subscriptions used by the observer.
+
+Local validation on 2026-10-15: `npm run check` passed TypeScript checking, runtime compilation, all 81 Node tests and plugin bundling without launching a native window. The suite covers state transitions, placement retention across idle periods, read/unread snapshots, paginated hydration/update races, superseded snapshots, cancellation, reconnect/backoff, directory growth limits, settings, build consent, cache integrity, build concurrency, startup/shutdown lifetime races, notification identity/deduplication, timeline cleanup and stdin backpressure boundaries. Unit tests use injected clients/processes. There is no standalone lint configuration; `git diff --check` passed whitespace checks.
+
+`npm run native:check` also passed locally on 2026-10-15: it compiled the actual AppKit definitions and ran real NSView pill hit-testing, anchor geometry, snapshot/notification decoding and navigation validation checks without opening windows. This does not prove Intel execution, accessibility or full GUI behavior.
+
+`npm run native:build` compiled and validated the final Apple Silicon app bundle. Its embedded source SHA-256 is `e5fb174fa6994f3bf1b73c796a955400e5eb5764fb58f6356746d398abc03b99`. Runtime dependencies are client/protocol SDK 0.11.1 and Zod; no Electron runtime is present.
+
+## Local desktop and daemon evidence
+
+Verified on the local Apple Silicon desktop with Paseo 0.11.2 on 2026-10-15:
+
+- `npm run native:start` reached READY, connected to the real local daemon, showed live running/unread counts and displayed grouped project/workspace/agent rows with elapsed labels.
+- The list expanded and its native Scroll Up action moved the scroll position. Real running/read-unread transitions updated the window while observation continued.
+- Selecting this project's **Open in Paseo** button opened its correct conversation/workspace in the installed desktop app.
+- In an earlier interactive build, Tab focused the pill and Shift-F10 opened its menu with focus, notification-authorization and Quit actions.
+- `npm run daemon:check` passed a real read-only connection/reconnection cycle. It closed only the observer's SDK connection and obtained a fresh full snapshot; the daemon itself was not restarted. A final run observed running, unread and permission-wait entries with navigation identity available. No agent task or desktop notification was sent by the check.
+- An owned developer session stopped with Ctrl-C. After the later interrupted UI session, a process check found no companion process under this checkout's `build/native` path.
+
+The interactive build preceded the final focus-ring polish, context-menu simplification and adaptive list height; the final source was subsequently compiled and model-checked. A later menu/Space interaction was interrupted and is not counted as a successful check. The UI automation repeatedly encountered changing live state, so Escape from a focused row, drag, appearance changes and focus restoration remain explicit manual checks. No notification permission was granted, no system banner delivery was asserted, and no screenshot containing private live workspace names was saved for publication.
+
+## Required manual macOS acceptance
+
+Run on Apple Silicon and Intel in a local desktop session. Preserve existing caches and independently running apps.
+
+1. Enable with no matching native cache: no compiler, download or child process. Snapshot RPC remains usable and settings show that a build is needed.
+2. Select **Build and start native companion**. Verify version, source identity/hash, architecture and developer-tool requirements. Cancel: no compilation or launch. Repeat to verify cancellation stays effective.
+3. Confirm: one compilation and one owned process despite double-clicks or a second settings session. Verify valid app/manifest hashes, no residual `.build-*` directories, one nonactivating floating window and local agent updates.
+4. Stop or disable during compilation: cancellation cleans temporary output and no child launches. Retry requires fresh confirmation. Missing/broken Apple tools produce a visible error without installing or repairing tools.
+5. Re-enable with a valid same-source cache: starts without compilation. Stop then **Start cached companion** reuses it. Right-click Quit permits a later cached start.
+6. Corrupt the isolated current cache: cached start fails closed; confirmed build preserves it and requests explicit repair. Older native and legacy Electron caches remain untouched.
+7. Start a second copy using the same native cache root: the native lock prevents duplicate windows. Stop affects only the owned child. A developer window using a different cache root is independent.
+8. Exercise three simultaneous turns, completion/read updates, permission waits and elapsed labels. Verify paginated directories and updates during hydration never show a partial count. Restart the daemon mid-turn: clear stale state, rediscover endpoint/credential and reconcile from a fresh full snapshot.
+9. Verify opacity/scale, drag, collapse/expand, scroll position, multiple displays and full-screen behavior. Check keyboard focus, Space/Return, Escape and VoiceOver without incidental focus stealing.
+10. On unsupported platforms/architectures: no compilation/spawn and build/start actions disabled. Disconnect or close the parent: no orphaned native process.
+11. Before granting notification permission, finish/fail a turn: no prompt, focus change or historical backlog. On an installation with existing macOS authorization, finish/fail a newly observed turn: one notification attempt per explicit turn ID. Repeat an event, reconnect and read/unread the agent: no duplicate. Cancel a turn or restart with completed unread agents: no completion alert. Deny permission: counts and reconnects still work. Verify actual banners with Focus disabled and notification preferences enabled; test permission denial separately.
+12. Open the list without selecting a row: Paseo stays in the background and unread state remains unchanged. Select **Open in Paseo** using mouse and keyboard: the intended agent on the selected local host opens. Missing server identity hides navigation; encoded IDs cannot alter the route or launch another scheme. Verify Paseo's normal read behavior after selection.
+
+The list above remains the full acceptance checklist. The local evidence completes only the specific portions recorded above. End-to-end settings build/disable, daemon-process restart, notification permission/banner delivery, Intel execution, VoiceOver and multi-display/full-screen behavior still require manual acceptance. Do not infer their success from unit tests, compilation or observer-only reconnect.
+
+## Screenshot and publication: pending
+
+Only `assets/icon.png` exists; it is not an interface screenshot. After real native acceptance, capture the actual pill/list using a workspace with no sensitive names. Save and visually inspect `docs/images/paseo-buddy-agent-list.png`, then reference it from README/OVERVIEW. Do not substitute an AI image or fixture rendering.
+
+Commit/push only with user authorization. Record the actual new commit and, once published, verify the image's public HTTPS URL returns 200 and `image/png`; inspect the returned image. A path template is not a working media URL. The current uncommitted working tree and pending screenshot cannot be presented as a completed Registry remediation.
+
+A reviewer reply should link the actual reviewed commit, explain source compilation consent and cache validation, give the exact checks and manual acceptance actually performed, and state screenshot/feature limits. Do not reuse the older Electron installation/download reply draft.
+
+## Pill collapse regression
+
+The custom pill hit test incorrectly compared a superview-coordinate point with local bounds. It worked at frame origin zero while collapsed, but rejected clicks after expansion moved the pill. The override has been removed so AppKit handles coordinate conversion. Before the fix, the native regression failed with `Expanded pill must remain clickable`; after the fix it passes for collapsed and both expanded positions at 0.75×, 1× and 1.5× scale, including out-of-bounds rejection. The Node suite and plugin build also pass. This is an automated hit-testing regression; it does not replace a real two-click desktop check.
+
+## Native appearance and full-screen drag update
+
+The native pill now uses an SF Symbol, rounded tinted count badges, hover/focus feedback and a separate popover-material list surface. Grouped cards show subdued project/workspace metadata, two-line agent titles and compact elapsed/navigation footers. The final real running interface was visually inspected locally, including a two-line long title, compact status/navigation footers and the separate pill/list surfaces; private live agent names were not saved as publication media.
+
+Dragging now tracks the pill anchor, clamps against the full physical `NSScreen.frame` and bypasses AppKit’s visible-frame window constraint. It can reach the bottom edge inside the region reserved for the Dock. `overlayLayout` places the list above/below the pill and reduces list height when space is limited, rather than letting the list block the pill or pull its anchor away from the screen edge. Native checks cover a simulated Dock reservation, negative-coordinate displays, constrained screen heights, all supported scales, non-overlap and collapse-anchor preservation. Physical pointer dragging to the Dock edge remains a manual check; it is not claimed from a screenshot.
+
+## Pill identity and compact counts
+
+Paseo settings now expose icon visibility, text visibility and an explicitly saved custom single-line label. New fields have additive defaults under display schema version 1, preserving saved opacity/scale and leaving Buddy/icon enabled by default. The native appearance mirror and decoder accept legacy values and apply new identity fields without restart.
+
+The running badge now hides at zero, matching unread behavior. Pill geometry removes absent icon/text/badge slots and their gaps, retaining only a 44-point clickable capsule when everything is hidden. Native checks pass for all icon/text combinations, no/one/two badges, capped custom label widths and anchor preservation at all supported scales. Node tests cover old-setting defaults, text/boolean validation and live mirror updates. Actual interaction with the new Paseo settings controls remains a manual acceptance item after reloading the updated plugin; the independently started developer window uses default identity settings.
+
+The pill expand/collapse chevron now uses AppKit primary `labelColor` instead of `tertiaryLabelColor`, providing a stronger foreground in both system appearance modes without adding reserved width or changing the click target.
+
+## Segmented toggle styling
+
+The supplied ChatGPT screenshots informed a lighter, segmented toolbar: monochrome iconography, fine dividers, a dedicated 44-point toggle zone and a round-cap 14-point chevron. The unread count now sits in a green corner badge over the toggle zone instead of a separate count slot. Zero counters and disabled identity elements still reserve no space. Native layout/appearance/hit-testing checks and the actual native build passed, including badge containment and stable anchors with the updated widths.
+
+## Hover actions and explicit read state
+
+Open in Paseo and Mark as read use a rounded accent-tinted hover background and hand cursor. Mark as read appears only for completed-unread cards, disables while pending and sends a strict bounded stdout request containing a request UUID, agent ID and attention timestamp. Node revalidates the displayed completion, then a short-lived client fetches fresh state and invokes the installed SDK’s `clearAgentAttention` operation. This API and its wire shape were verified in the installed Paseo 0.11.2 app as well as SDK 0.11.1 declarations. No arbitrary RPC or shell bridge exists, and opening the list itself remains side-effect free.
+
+The 80-test Node suite passes, including stale/active/permission/wrong-host rejection, partial and oversized command handling, replay/concurrency limits, cancellation, late results, timeouts, result-queue priority and credential-free failures. Native checks pass command/result JSON compatibility alongside existing layout/protocol checks; the actual native app bundle builds. These mutation tests use injected SDK clients, not real conversations. End-to-end marking of a real completion and pointer-hover appearance remain manual acceptance items; do not infer a real read mutation from the build or mocks.
+
+## Dual corner counts
+
+The middle waveform and inline running number have been removed. Running and unread values now share the top-right corner as separate red/green badges, red on the left and green on the right. Zero values hide independently; one badge fits inside the normal toggle width. With two badges the toggle grows only as needed for the badge widths and a 3-point gap, keeping the arrow centered and both badges within bounds. Native checks pass for zero/single/dual counts, 99+ widths, hidden icon/text combinations, non-overlap and anchor preservation at all supported scales.
+
+The pill’s custom blue focus stroke and AppKit focus ring have been removed. Clicking it retains the clean capsule outline; keyboard handlers and first-responder behavior remain, with only neutral toggle-background feedback. Native source/model compilation and the plugin build pass for this presentation-only change.
+
+Current list bounds default to 140–360 points and are configurable in appearance settings. Native checks cover legacy defaults, invalid bounds and content fitting at all supported scales; visual acceptance of short/long lists remains manual.

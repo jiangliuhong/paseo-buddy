@@ -20,6 +20,7 @@ export function normalizeAgent(agent: PaseoAgent, project?: ProjectPlacementPayl
     status: completedUnread ? "completed_unread" : agent.pendingPermissions.length ? "waiting_permission" : "running",
     turnId: agent.activeTurn?.turnId ?? null,
     startedAt: agent.activeTurn?.startedAt ?? null,
+    ...(agent.attentionTimestamp == null ? {} : { attentionTimestamp: agent.attentionTimestamp }),
   };
 }
 
@@ -48,9 +49,12 @@ export class AgentState {
   }
 
   private upsert(agent: PaseoAgent, project?: ProjectPlacementPayload | null) {
-    if (normalizeAgent(agent, project)) this.agents.set(agent.id, { agent, project });
+    // Idle/read agents can start again with a status-only update. Retain their placement.
+    if (!agent.archivedAt) this.agents.set(agent.id, { agent, project });
     else this.agents.delete(agent.id);
   }
+
+  get size() { return this.agents.size; }
 
   snapshot(): BuddyAgent[] {
     return [...this.agents.values()]

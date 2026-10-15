@@ -1,223 +1,290 @@
 import { createHash } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import { access, lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
-import { homedir } from "node:os";
+import { access, lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { homedir, release } from "node:os";
 import path from "node:path";
-import { Readable, Transform } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import type { ChildProcess } from "node:child_process";
-import { pruneOldCompanions } from "./companion-cache.js";
 import { execCommand, spawnProcess } from "@getpaseo/plugin/server";
+import { runNativeCompiler } from "./native-compiler.js";
+import { nativeSource } from "./native-source.js";
+import { readPaseoConfig, readPaseoServerId } from "./paseo-connection.js";
+import { buildAgentDeepLink } from "@getpaseo/protocol/agent-deep-link";
+import { startLiveAgents } from "./live-agents.js";
+import type { BuddyNotification, BuddyState } from "../shared/agents.js";
+import type { NativeActionResult } from "../shared/native-actions.js";
+import { nativeActionBridge } from "./native-actions.js";
 
-export const companionVersion = "0.1.3";
-const releaseBase = `https://github.com/jiangliuhong/paseo-buddy/releases/download/v${companionVersion}`;
-const maxArchiveBytes = 200 * 1024 * 1024;
-const bundleId = "io.github.jiangliuhong.paseobuddy";
-
-export function companionAsset(platform: string, arch: string) {
-  if (platform !== "darwin" || !["arm64", "x64"].includes(arch)) return null;
-  const name = `Paseo-Buddy-${companionVersion}-macOS-${arch}.zip`;
-  return { name, url: `${releaseBase}/${name}`, checksums: `${releaseBase}/SHA256SUMS.txt` };
+export const companionVersion = "0.1.3-native.1";
+const nativeRecipe = "appkit-bundle-1";
+const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>io.github.jiangliuhong.paseobuddy.native</string>
+<key>CFBundleName</key><string>Paseo Buddy</string>
+<key>CFBundleExecutable</key><string>Paseo Buddy</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>0.1.3</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSMinimumSystemVersion</key><string>13.0</string>
+<key>LSUIElement</key><true/>
+<key>NSHighResolutionCapable</key><true/>
+</dict></plist>`;
+export const sourceSha256 = createHash("sha256").update(nativeSource).digest("hex");
+export const nativeCacheRoot = () => path.join(homedir(), "Library/Caches/Paseo Buddy/native");
+export function companionAsset(platform: string, arch: string, systemRelease = release()) {
+  // macOS 13 uses Darwin 22. Reject older systems before any tool/cache/process action.
+  return platform === "darwin" && ["arm64", "x64"].includes(arch) && Number.parseInt(systemRelease, 10) >= 22
+    ? { source: "server/native-source.ts", arch } : null;
 }
-
-export function checksumFor(text: string, name: string) {
-  const match = text.split(/\r?\n/).map(line => /^([a-f0-9]{64})\s+\*?(.+)$/.exec(line.trim()))
-    .find(line => line?.[2] === name);
-  if (!match) throw new Error("Companion checksum is missing from the release");
-  return match[1];
-}
-
-async function releaseResponse(url: string, signal: AbortSignal) {
-  const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(120000)]) });
-  if (!response.ok) throw new Error(`Companion release request returned HTTP ${response.status}`);
-  const destination = new URL(response.url);
-  if (destination.protocol !== "https:" || !["github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"].includes(destination.hostname)) {
-    throw new Error("Unexpected companion download destination");
+export function companionEnvironment(env: NodeJS.ProcessEnv, parentPid: number) {
+  const result: NodeJS.ProcessEnv = { PASEO_BUDDY_PARENT_PID: String(parentPid) };
+  for (const key of ["HOME", "PATH", "TMPDIR", "USER", "LOGNAME", "LANG", "LC_ALL"]) {
+    if (env[key] !== undefined) result[key] = env[key];
   }
-  return response;
+  result.PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
+  return result;
 }
-
-export async function downloadArchive(url: string, file: string, expected: string, signal: AbortSignal) {
-  const response = await releaseResponse(url, signal);
-  if (!response.body) throw new Error("Companion archive is empty");
-  const length = Number(response.headers.get("content-length"));
-  if (length > maxArchiveBytes) throw new Error("Companion archive exceeds the size limit");
-  let bytes = 0;
-  const hash = createHash("sha256");
-  const verify = new Transform({ transform(chunk: Buffer, _encoding, callback) {
-    bytes += chunk.length;
-    if (bytes > maxArchiveBytes) return callback(new Error("Companion archive exceeds the size limit"));
-    hash.update(chunk);
-    callback(null, chunk);
-  } });
-  await pipeline(Readable.fromWeb(response.body), verify, createWriteStream(file, { flags: "wx", mode: 0o600 }), { signal });
-  if (hash.digest("hex") !== expected) throw new Error("Companion archive checksum does not match");
+const digest = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
+export function companionDirectory(cacheRoot: string, arch: string) {
+  return path.join(cacheRoot, `${companionVersion}-${arch}-${sourceSha256.slice(0, 16)}-${nativeRecipe}`);
 }
-
-async function validateApp(directory: string, signal: AbortSignal) {
-  const app = path.join(directory, "Paseo Buddy.app");
-  const executable = path.join(app, "Contents/MacOS/Paseo Buddy");
-  if (!(await lstat(app)).isDirectory() || !(await lstat(executable)).isFile()) throw new Error("Companion app layout is invalid");
-  await access(executable, constants.X_OK);
-  const info = await execCommand("/usr/bin/plutil", ["-extract", "CFBundleIdentifier", "raw", "-o", "-", path.join(app, "Contents/Info.plist")], { shell: false, signal });
-  if (info.stdout.trim() !== bundleId) throw new Error("Companion bundle identity is invalid");
-  await execCommand("/usr/bin/codesign", ["--verify", "--deep", "--strict", app], { shell: false, signal, timeout: 30000 });
-  return executable;
-}
-
-export async function ensureCompanion(options: {
+export type BuildOptions = {
+  allowBuild?: boolean;
   arch: string;
   cacheRoot: string;
   signal: AbortSignal;
-  download?: typeof downloadArchive;
-  checksum?: (url: string, name: string, signal: AbortSignal) => Promise<string>;
-  validate?: typeof validateApp;
-  extract?: (archive: string, directory: string, signal: AbortSignal) => Promise<void>;
-}) {
-  const asset = companionAsset("darwin", options.arch);
-  if (!asset) throw new Error("Unsupported companion architecture");
-  const { signal } = options;
-  const validate = options.validate ?? validateApp;
+  exec?: typeof execCommand;
+};
+async function validate(directory: string, arch: string) {
+  const app = path.join(directory, "Paseo Buddy.app");
+  const contents = path.join(app, "Contents");
+  const executable = path.join(contents, "MacOS/Paseo Buddy");
+  const plist = path.join(contents, "Info.plist");
+  for (const folder of [app, contents, path.join(contents, "MacOS")]) {
+    if (!(await lstat(folder)).isDirectory()) throw new Error("Native app layout must use real directories");
+  }
+  if (!(await lstat(plist)).isFile() || await readFile(plist, "utf8") !== infoPlist) throw new Error("Native app identity is invalid");
+  const markerFile = path.join(directory, "build.json");
+  if (!(await lstat(directory)).isDirectory() || !(await lstat(markerFile)).isFile()
+      || !(await lstat(executable)).isFile()) throw new Error("Native cache must contain regular files");
+  const marker = JSON.parse(await readFile(markerFile, "utf8"));
+  if (marker.recipe !== nativeRecipe || marker.version !== companionVersion || marker.arch !== arch || marker.sourceSha256 !== sourceSha256
+      || marker.binarySha256 !== digest(await readFile(executable))) throw new Error("Native companion cache does not match this source");
+  await access(executable, constants.X_OK);
+  return executable;
+}
+async function compileCompanion(options: BuildOptions) {
+  if (!["arm64", "x64"].includes(options.arch)) throw new Error("Unsupported companion architecture");
+  options.signal.throwIfAborted();
   await mkdir(options.cacheRoot, { recursive: true, mode: 0o700 });
-  if (!(await lstat(options.cacheRoot)).isDirectory()) throw new Error("Companion cache must be a real directory");
-  const destination = path.join(options.cacheRoot, `${companionVersion}-${options.arch}`);
+  if (!(await lstat(options.cacheRoot)).isDirectory()) throw new Error("Native cache must be a real directory");
+  const destination = companionDirectory(options.cacheRoot, options.arch);
+  try { return await validate(destination, options.arch); }
+  catch { options.signal.throwIfAborted(); }
+  if (!options.allowBuild) throw new Error("Build confirmation required: no valid native companion cache");
+  // Fail without changing an unknown/corrupt cache. User can remove this one directory and retry.
+  try { await lstat(destination); throw new Error(`Remove invalid native cache before rebuilding: ${destination}`); }
+  catch (error) { if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error; }
+  const temporary = await mkdtemp(path.join(options.cacheRoot, ".build-"));
   try {
-    const marker = JSON.parse(await readFile(path.join(destination, "release.json"), "utf8"));
-    if (marker.version === companionVersion && marker.arch === options.arch && /^[a-f0-9]{64}$/.test(marker.sha256)) {
-      return await validate(destination, signal);
-    }
-  } catch { signal.throwIfAborted(); }
-
-  const temporary = await mkdtemp(path.join(options.cacheRoot, ".install-"));
-  try {
-    const checksum = options.checksum ?? (async (url, name, abort) => {
-      const response = await releaseResponse(url, abort);
-      const text = await response.text();
-      if (text.length > 8192) throw new Error("Companion checksum manifest is too large");
-      return checksumFor(text, name);
+    const source = path.join(temporary, "Buddy.swift");
+    const contents = path.join(temporary, "Paseo Buddy.app/Contents");
+    await mkdir(path.join(contents, "MacOS"), { recursive: true, mode: 0o700 });
+    const executable = path.join(contents, "MacOS/Paseo Buddy");
+    await writeFile(path.join(contents, "Info.plist"), infoPlist, { mode: 0o600 });
+    await writeFile(source, nativeSource, { mode: 0o600 });
+    const exec = options.exec ?? execCommand;
+    await exec("/usr/bin/xcode-select", ["-p"], { shell: false, signal: options.signal, timeout: 5000, env: companionEnvironment(process.env, process.pid) });
+    await (options.exec ?? runNativeCompiler)("/usr/bin/xcrun", ["swiftc", "-O", "-target", `${options.arch === "arm64" ? "arm64" : "x86_64"}-apple-macosx13.0`, "-framework", "AppKit", "-framework", "UserNotifications",
+      "-module-cache-path", path.join(temporary, "modules"), "-o", executable, source], {
+      shell: false, signal: options.signal, timeout: 180000,
+      env: companionEnvironment(process.env, process.pid), maxBuffer: 1024 * 1024,
     });
-    const sha256 = await checksum(asset.checksums, asset.name, signal);
-    const archive = path.join(temporary, "companion.zip");
-    await (options.download ?? downloadArchive)(asset.url, archive, sha256, signal);
-    const extract = options.extract ?? (async (file, directory, abort) => {
-      await execCommand("/usr/bin/ditto", ["-x", "-k", file, directory], { shell: false, signal: abort, timeout: 60000 });
-    });
-    await extract(archive, temporary, signal);
-    await validate(temporary, signal);
-    await rm(archive);
-    await writeFile(path.join(temporary, "release.json"), JSON.stringify({ version: companionVersion, arch: options.arch, sha256 }), { mode: 0o600 });
-    signal.throwIfAborted();
-    try {
-      await rename(temporary, destination);
-    } catch (error) {
+    options.signal.throwIfAborted();
+    const binarySha256 = digest(await readFile(executable));
+    await writeFile(path.join(temporary, "build.json"), JSON.stringify({
+      recipe: nativeRecipe, version: companionVersion, arch: options.arch, sourceSha256, binarySha256,
+    }), { mode: 0o600 });
+    await validate(temporary, options.arch);
+    await rm(path.join(temporary, "modules"), { recursive: true, force: true });
+    options.signal.throwIfAborted();
+    try { await rename(temporary, destination); }
+    catch (error) {
       if (!(error instanceof Error && "code" in error && ["EEXIST", "ENOTEMPTY"].includes(String(error.code)))) throw error;
-      try { return await validate(destination, signal); }
-      catch { signal.throwIfAborted(); }
-      await rm(destination, { recursive: true, force: true });
-      await rename(temporary, destination);
+      return await validate(destination, options.arch);
     }
-    return await validate(destination, signal);
-  } finally {
-    await rm(temporary, { recursive: true, force: true });
-  }
+    return await validate(destination, options.arch);
+  } finally { await rm(temporary, { recursive: true, force: true }); }
+}
+const builds = new Map<string, Promise<string>>();
+export async function ensureCompanion(options: BuildOptions) {
+  const key = path.resolve(options.cacheRoot) + "/" + options.arch;
+  const previous = builds.get(key);
+  const task = (async () => { await previous?.catch(() => {}); options.signal.throwIfAborted(); return compileCompanion(options); })();
+  builds.set(key, task);
+  try { return await task; }
+  finally { if (builds.get(key) === task) builds.delete(key); }
 }
 
-export function companionEnvironment(env: NodeJS.ProcessEnv, parentPid: number) {
-  const childEnv: NodeJS.ProcessEnv = { PASEO_BUDDY_PARENT_PID: String(parentPid) };
-  for (const key of ["HOME", "PATH", "TMPDIR", "USER", "LOGNAME", "LANG", "LC_ALL", "PASEO_HOME"]) {
-    if (env[key] !== undefined) childEnv[key] = env[key];
-  }
-  return childEnv;
+/** Keep only the newest state while the native pipe is backpressured. Never send credentials. */
+export function nativePublisher(child: ChildProcess) {
+  let waiting = false;
+  let latest: string | undefined;
+  const notifications: string[] = [];
+  const responses: string[] = [];
+  let stopped = false;
+  const send = () => {
+    if (stopped || waiting || !child.stdin || child.stdin.destroyed) return;
+    while (!waiting && (latest || responses.length || notifications.length)) {
+      const value = latest ?? responses.shift() ?? notifications.shift()!;
+      latest = undefined;
+      waiting = !child.stdin.write(value);
+    }
+  };
+  const drain = () => { waiting = false; send(); };
+  child.stdin?.on("drain", drain);
+  const error = () => { stopped = true; latest = undefined; notifications.length = 0; responses.length = 0; };
+  child.stdin?.on("error", error);
+  return {
+    publish(state: BuddyState) {
+      if (stopped) return;
+      const message = JSON.stringify({ connection: state.connection,
+        agents: state.agents.slice(0, 5001).map(({ id, projectName, workspaceName, name, status, startedAt, attentionTimestamp }) =>
+          ({ id, projectName, workspaceName, name, status, startedAt, attentionTimestamp,
+            ...(state.serverId?.trim() && id.trim() ? { conversationUrl: buildAgentDeepLink({ serverId: state.serverId, agentId: id }) } : {}) })),
+      }) + "\n";
+      latest = state.agents.length <= 5000 && Buffer.byteLength(message) <= 1024 * 1024 ? message : '{"connection":"disconnected","agents":[]}\n';
+      send();
+    },
+    notify(notification: BuddyNotification) {
+      if (stopped || notifications.length >= 256 || !/^[a-f0-9]{64}$/.test(notification.id)) return;
+      notifications.push(JSON.stringify({ notification: { id: notification.id,
+        agentName: notification.agentName.slice(0, 200), outcome: notification.outcome } }) + "\n");
+      send();
+    },
+    actionResult(result: NativeActionResult) {
+      if (stopped) return;
+      if (responses.length >= 64) responses.shift();
+      responses.push(JSON.stringify({ actionResult: { requestId: result.requestId, agentId: result.agentId,
+        success: result.success, error: result.error?.slice(0, 160) ?? null } }) + "\n");
+      send();
+    },
+    stop() {
+      stopped = true; latest = undefined; notifications.length = 0; responses.length = 0;
+      child.stdin?.off("drain", drain);
+      // Pending writes can report EPIPE after stop; keep the owned pipe's error handler.
+    },
+  };
 }
-
 export function startDesktopCompanion(options: {
+  allowBuild?: boolean;
+  onError?: (message: string) => void;
+  onExit?: () => void;
   platform?: string;
   arch?: string;
+  systemRelease?: string;
   cacheRoot?: string;
   displayFile?: string;
+  preferencesSuite?: string;
   displayReady?: Promise<void>;
   ensure?: typeof ensureCompanion;
   spawn?: typeof spawnProcess;
-  retryMs?: number;
-  cleanup?: typeof pruneOldCompanions;
-  cleanupDelayMs?: number;
+  observe?: typeof startLiveAgents;
   log?: (message: string) => void;
+  readyTimeoutMs?: number;
 } = {}) {
   const controller = new AbortController();
-  let child: ChildProcess | undefined;
-  let retry: ReturnType<typeof setTimeout> | undefined;
-  let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
-  let cleanupTask: Promise<void> | undefined;
-  let wake: (() => void) | undefined;
-  const log = options.log ?? console.log;
-  const platform = options.platform ?? process.platform;
   const arch = options.arch ?? process.arch;
-  const cacheRoot = options.cacheRoot ?? path.join(homedir(), "Library/Caches/Paseo Buddy/companions");
+  const cacheRoot = options.cacheRoot ?? nativeCacheRoot();
+  let child: ChildProcess | undefined;
+  let observation: ReturnType<typeof startLiveAgents> | undefined;
+  let publisher: ReturnType<typeof nativePublisher> | undefined;
+  let actions: ReturnType<typeof nativeActionBridge> | undefined;
+  let latestState: BuddyState = { connection: "connecting", agents: [] };
+  let childStop: Promise<void> | undefined;
+  let phase: "settings" | "build" | "launch" | "observe" = "settings";
+  function stopChild() {
+    if (childStop) return childStop;
+    childStop = new Promise<void>(resolve => {
+      if (!child || child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+      const timer = setTimeout(() => { child?.kill("SIGKILL"); }, 3000);
+      child.once("exit", () => { clearTimeout(timer); resolve(); });
+      child.kill("SIGTERM");
+    });
+    return childStop;
+  }
   const ready = (async () => {
-    if (!companionAsset(platform, arch)) {
-      log("Paseo Buddy desktop auto-start is available only on local macOS daemons (arm64/x64).");
-      return;
-    }
-    await Promise.race([
-      options.displayReady ?? Promise.resolve(),
-      new Promise<void>(resolve => controller.signal.addEventListener("abort", () => resolve(), { once: true })),
-    ]);
-    if (controller.signal.aborted) return;
-    let failures = 0;
-    while (!controller.signal.aborted) {
-      try {
-        log(`Preparing Paseo Buddy desktop ${companionVersion} for ${arch}.`);
-        const executable = await (options.ensure ?? ensureCompanion)({
-          arch, signal: controller.signal,
-          cacheRoot,
-        });
-        controller.signal.throwIfAborted();
-        child = (options.spawn ?? spawnProcess)(executable, [], {
-          shell: false, stdio: "ignore", signal: controller.signal, killSignal: "SIGTERM",
-          env: { ...companionEnvironment(process.env, process.pid), ...(options.displayFile ? { PASEO_BUDDY_DISPLAY_FILE: options.displayFile } : {}) },
-        });
-        child.on("error", () => { if (!controller.signal.aborted) log("Paseo Buddy desktop could not be launched."); });
-        await new Promise<void>((resolve, reject) => { child!.once("spawn", resolve); child!.once("error", reject); });
-        child.once("exit", code => { if (!controller.signal.aborted && code) log(`Paseo Buddy desktop exited with code ${code}.`); });
-        log("Paseo Buddy desktop started. Disable the plugin to stop it.");
-        cleanupTimer = setTimeout(() => {
-          if (controller.signal.aborted || child?.signalCode !== null
-              || (child?.exitCode !== null && child?.exitCode !== 0)) return;
-          cleanupTask = (options.cleanup ?? pruneOldCompanions)({
-            cacheRoot, currentVersion: companionVersion, arch, signal: controller.signal,
-          }).then(removed => {
-            if (removed.length) log(`Removed old Paseo Buddy desktop caches: ${removed.join(", ")}.`);
-          }).catch(() => {
-            if (!controller.signal.aborted) log("Old companion cache cleanup was skipped; the current desktop remains available.");
-          });
-        }, options.cleanupDelayMs ?? 2000);
-        cleanupTimer.unref();
-        return;
-      } catch {
-        if (controller.signal.aborted) return;
-        log("Paseo Buddy desktop is not ready; retrying its release download/start shortly.");
-        const delay = Math.min((options.retryMs ?? 5000) * 2 ** Math.min(failures++, 4), 60000);
-        await new Promise<void>(resolve => { wake = resolve; retry = setTimeout(resolve, delay); });
-      }
+    if (!companionAsset(options.platform ?? process.platform, arch, options.systemRelease)) return;
+    try {
+      await Promise.race([options.displayReady ?? Promise.resolve(), new Promise<void>(resolve => {
+        controller.signal.addEventListener("abort", () => resolve(), { once: true });
+      })]);
+      controller.signal.throwIfAborted();
+      phase = "build";
+      const executable = await (options.ensure ?? ensureCompanion)({ arch, cacheRoot,
+        allowBuild: options.allowBuild === true, signal: controller.signal });
+      controller.signal.throwIfAborted();
+      phase = "launch";
+      child = (options.spawn ?? spawnProcess)(executable, [], {
+        shell: false, stdio: ["pipe", "pipe", "ignore"], signal: controller.signal, killSignal: "SIGTERM",
+        env: { ...companionEnvironment(process.env, process.pid), PASEO_BUDDY_LOCK_PATH: path.join(cacheRoot, ".window.lock"),
+          ...(options.displayFile ? { PASEO_BUDDY_DISPLAY_FILE: options.displayFile } : {}),
+          ...(options.preferencesSuite ? { PASEO_BUDDY_PREFERENCES_SUITE: options.preferencesSuite } : {}) },
+      });
+      child.on("error", () => {}); // AbortError belongs to this owned lifetime.
+      child.once("exit", () => {
+        publisher?.stop(); void actions?.stop(); void observation?.stop(); options.onExit?.();
+      });
+      await new Promise<void>((resolve, reject) => {
+        let text = "";
+        const timer = setTimeout(() => finish(new Error("Native window did not become ready")), options.readyTimeoutMs ?? 10000);
+        const data = (chunk: Buffer) => {
+          text += chunk.toString();
+          if (text === "READY\n") finish();
+          else if (text === "ALREADY_RUNNING\n") finish(new Error("Another Buddy is already running with this native cache"));
+          else if (text.length > 64) finish(new Error("Invalid native startup response"));
+        };
+        const exit = () => finish(new Error("Native window exited before readiness"));
+        const error = () => finish(new Error("Native companion could not start"));
+        const abort = () => finish(new Error("Native startup cancelled"));
+        function finish(error?: Error) {
+          clearTimeout(timer); child?.stdout?.off("data", data); child?.off("exit", exit); child?.off("error", errorHandler);
+          controller.signal.removeEventListener("abort", abort);
+          error ? reject(error) : resolve();
+        }
+        const errorHandler = error;
+        child!.stdout?.on("data", data); child!.once("exit", exit); child!.once("error", errorHandler);
+        controller.signal.addEventListener("abort", abort, { once: true });
+      });
+      controller.signal.throwIfAborted();
+      if (child.exitCode !== null || child.signalCode !== null) throw new Error("Native window exited after readiness");
+      phase = "observe";
+      publisher = nativePublisher(child);
+      actions = nativeActionBridge(child, { state: () => latestState, reply: publisher.actionResult });
+      observation = (options.observe ?? startLiveAgents)({ config: () => readPaseoConfig(), serverId: () => readPaseoServerId(),
+        publish: state => { latestState = state; publisher?.publish(state); }, notify: publisher.notify });
+      (options.log ?? console.log)("Paseo Buddy native AppKit window started.");
+    } catch (error) {
+      await actions?.stop();
+      await stopChild();
+      if (!controller.signal.aborted) options.onError?.(error instanceof Error && /confirmation required|invalid native cache|Another Buddy/.test(error.message)
+        ? error.message : phase === "build"
+          ? "Native build failed. Check Apple developer tools, available disk space and cache permissions, then review a fresh build confirmation."
+          : phase === "launch"
+            ? "Native window could not start. Use a local logged-in macOS desktop session and check companion process/cache permissions."
+            : "Companion initialization failed. Check Paseo settings and the local daemon connection, then retry.");
     }
   })();
-  return {
-    ready,
-    async stop() {
-      controller.abort();
-      clearTimeout(retry);
-      clearTimeout(cleanupTimer);
-      wake?.();
+  let stopping: Promise<void> | undefined;
+  return { ready, stop() {
+    if (stopping) return stopping;
+    controller.abort(); publisher?.stop();
+    stopping = (async () => {
       await ready;
-      if (child && child.exitCode === null && child.signalCode === null) {
-        await new Promise<void>(resolve => {
-          const timeout = setTimeout(() => { child?.kill("SIGKILL"); resolve(); }, 3000);
-          child!.once("exit", () => { clearTimeout(timeout); resolve(); });
-          child!.kill("SIGTERM");
-        });
-      }
-      await cleanupTask;
-    },
-  };
+      await actions?.stop();
+      await observation?.stop();
+      await stopChild();
+    })();
+    return stopping;
+  } };
 }

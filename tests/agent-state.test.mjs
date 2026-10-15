@@ -69,6 +69,22 @@ test('reconnect snapshot replaces old names; explicit null metadata clears the l
   assert.equal(state.snapshot()[0].workspaceName,'—');
 });
 
+test('idle/read agents retain workspace placement across status-only turn transitions',()=>{
+  const state=new AgentState();
+  const project={projectName:'Project',workspaceName:'Feature workspace'};
+  state.replaceEntries([{agent:agent('a',{status:'idle',workspaceId:'work-1'}),project}]);
+  assert.deepEqual(state.snapshot(),[]);
+  state.update({kind:'upsert',agent:agent('a',{workspaceId:'work-1'})});
+  assert.equal(state.snapshot()[0].workspaceName,'Feature workspace');
+  state.update({kind:'upsert',agent:agent('a',{status:'idle',workspaceId:'work-1',activeTurn:null})});
+  assert.deepEqual(state.snapshot(),[]);
+  state.update({kind:'upsert',agent:agent('a',{workspaceId:'work-1',activeTurn:{turnId:'turn-2',startedAt:null}})});
+  assert.equal(state.snapshot()[0].projectName,'Project');
+  assert.equal(state.snapshot()[0].workspaceName,'Feature workspace');
+  state.update({kind:'upsert',agent:agent('a',{workspaceId:'work-2'})});
+  assert.equal(state.snapshot()[0].workspaceName,'—');
+});
+
 
 test('completed unread agents hydrate from daemon attention state and clear on read', () => {
   const state=new AgentState();
@@ -79,6 +95,16 @@ test('completed unread agents hydrate from daemon attention state and clear on r
   state.update({kind:'upsert',agent:completed});
   assert.equal(state.snapshot().length,1);
   state.update({kind:'upsert',agent:{...completed,requiresAttention:false,attentionReason:null}});
+  assert.deepEqual(state.snapshot(),[]);
+});
+
+test('read identity follows the daemon attention timestamp and only clears from authoritative state',()=>{
+  const state=new AgentState();
+  const done=agent('a',{status:'idle',requiresAttention:true,attentionReason:'finished',attentionTimestamp:'completion-1'});
+  state.replace([done]);assert.equal(state.snapshot()[0].attentionTimestamp,'completion-1');
+  state.update({kind:'upsert',agent:{...done,attentionTimestamp:'completion-2'}});
+  assert.equal(state.snapshot()[0].attentionTimestamp,'completion-2');
+  state.update({kind:'upsert',agent:{...done,requiresAttention:false,attentionReason:null,attentionTimestamp:null}});
   assert.deepEqual(state.snapshot(),[]);
 });
 

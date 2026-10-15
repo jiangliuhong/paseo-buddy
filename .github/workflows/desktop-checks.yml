@@ -1,60 +1,20 @@
-name: Desktop checks
-
-on:
-  push:
-    paths:
-      - "package.json"
-      - "package-lock.json"
-      - "index.server.ts"
-      - "paseo-plugin.json"
-      - "tsconfig*.json"
-      - "server/**"
-      - "shared/**"
-      - "tests/**"
-      - "scripts/**"
-      - "assets/**"
-      - "electron-builder.yml"
-      - "apps/desktop/**"
-      - ".github/workflows/desktop-checks.yml"
-  pull_request:
-    paths:
-      - "package.json"
-      - "package-lock.json"
-      - "index.server.ts"
-      - "paseo-plugin.json"
-      - "tsconfig*.json"
-      - "server/**"
-      - "shared/**"
-      - "tests/**"
-      - "scripts/**"
-      - "assets/**"
-      - "electron-builder.yml"
-      - "apps/desktop/**"
-      - ".github/workflows/desktop-checks.yml"
-  workflow_dispatch:
-
+name: Plugin and native checks
+on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
-
 jobs:
-  desktop:
-    runs-on: ubuntu-latest
+  plugin:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Install dependencies at the repository root (fresh clone)
-        run: npm ci --ignore-scripts --include=dev --no-audit --no-fund
-      - name: Verify desktop workspace dependencies and types
-        run: |
-          npm ls react react-dom lucide-react vite @types/react @types/react-dom --workspace @paseo-buddy/desktop
-      - name: Run desktop tests
-        run: npm test
-      - name: Typecheck and build Vite UI from root
-        run: npm run typecheck && npm run desktop:build
-      - name: Check Electron main/preload syntax
-        run: |
-          node --check apps/desktop/main.cjs
-          node --check apps/desktop/preload.cjs
-          node --check apps/desktop/window-bounds.cjs
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run check
+      - if: runner.os == 'macOS'
+        run: npm run native:check && npm run native:build

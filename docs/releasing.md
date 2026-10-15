@@ -1,40 +1,7 @@
-# Releasing Paseo Buddy
+# Publishing the native-source plugin
 
-The source repository contains a Paseo daemon plugin and a standalone macOS desktop app. On macOS, enabling the plugin starts its lifecycle-owned companion automatically. The binary version in `server/desktop-companion.ts` must match the release assets and checksum manifest.
+The current implementation distributes plugin and embedded Swift/AppKit source through a reviewed Git revision. It does not publish or download a Companion binary, DMG, ZIP, compiler or Electron runtime. Historical `docs/releases/` notes describe old Electron releases and are not installation instructions for the current source.
 
-## Verify and package
+Before proposing a Registry pin: run `npm ci --ignore-scripts`, `npm run check`, `npm run native:check`, `npm run native:build`, then complete native desktop acceptance on the supported architectures. Capture a real running interface and verify its public HTTPS image URL. Review source/build/process permissions and confirm OVERVIEW.md matches the revision. See `review-readiness.md`.
 
-```sh
-npm ci --include=dev
-npm run check
-npm run desktop:package -- --arm64 --x64
-```
-
-Packages are written to the ignored `release/` directory. `desktop:stage` builds the renderer, copies the Electron entry/preload/helpers into `build/desktop`, and bundles the SDK observation adapter into `runtime/live-agents.mjs` with esbuild. The staged app has no external runtime dependencies or repository-relative imports. The generated package does not need Node.js or npm on the user's machine.
-
-The checked-in app icon is generated from vector drawing code in `scripts/create-icon.m`. To regenerate it on macOS:
-
-```sh
-clang -fno-modules -framework AppKit scripts/create-icon.m -o /tmp/paseo-buddy-create-icon
-/tmp/paseo-buddy-create-icon assets/icon.png
-```
-
-The current configuration uses ad-hoc signing so the app has a consistent local code signature, but it is not Apple Developer signed or notarized. It is published as an unsigned preview for distribution purposes. Developer signing and notarization require a separately configured Apple identity; no signing credential is stored in this repository. `LSUIElement` and runtime Dock hiding keep the app out of the Dock.
-
-## GitHub Release
-
-Keep root and desktop package versions aligned, update the lockfile, and write release notes before tagging. A `v*` tag triggers `.github/workflows/release.yml`, which runs verification, packages both macOS architectures, writes checksums, and publishes a prerelease with those assets. `workflow_dispatch` builds downloadable workflow artifacts without creating a release.
-
-The workflow reads `docs/releases/${version}.md` for its notes. Create that version’s file before tagging. `contents: write` is restricted to the final publishing job; packaging has read-only repository permission.
-
-## Git-source plugin
-
-The manifest's preparation command runs `npm ci --omit=dev --ignore-scripts --workspaces=false` so plugin runtime dependencies are installed without Electron workspace tooling. Commit `package-lock.json`, the TypeScript plugin sources, `OVERVIEW.md`, and manifest assets. The daemon compiles the TypeScript source itself.
-
-Users can install the Git source with:
-
-```sh
-paseo plugin add git:jiangliuhong/paseo-buddy --ref v0.1.1
-```
-
-The official plugin registry is a separate reviewed listing, not created automatically by a GitHub Release. Registry submission requires a pinned repository revision and `OVERVIEW.md`.
+Record the final committed SHA and send it, validation results and screenshot URL to the existing Registry PR only when the user authorizes posting. No new tag, Release or Registry PR is necessary for this remediation. Commit/push/publication are separate user-authorized actions. The automatic binary Release workflow has been removed.
