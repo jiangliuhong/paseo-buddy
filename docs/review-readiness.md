@@ -4,7 +4,7 @@ Review: https://github.com/getpaseo/plugins/pull/299#pullrequestreview-547884506
 
 ## Current implementation
 
-The working tree uses a native Swift/AppKit companion. The v0.1.4 installation flow now downloads a matching GitHub Release after one explicit settings-button click. Earlier local-build and Electron release evidence does not establish downloaded-binary acceptance for this revision. No release has been published by this task.
+The working tree uses a native Swift/AppKit companion. The v0.1.4 installation flow now downloads a matching GitHub Release after one explicit settings-button click. Earlier local-build and Electron release evidence does not establish downloaded-binary acceptance for this revision. [v0.1.4](https://github.com/jiangliuhong/paseo-buddy/releases/tag/v0.1.4) is published; real GitHub download/cache validation is recorded below.
 
 - Activation starts only a verified version/architecture/source/binary-matched cache without network access.
 - **下载并启动** downloads the fixed release executable and manifest; it needs no compiler or second confirmation. Source/version/architecture and SHA-256 are checked before atomic cache publication or launch.
@@ -14,7 +14,7 @@ The working tree uses a native Swift/AppKit companion. The v0.1.4 installation f
 - Paginated directory snapshots load completely before display. Buffered updates are replayed after loading. Invalid cursors, failed pages, oversized directories and buffer overflow clear state and reconnect; late superseded results cannot overwrite a new snapshot.
 - Opacity/scale settings apply live; native geometry preserves the pill anchor. Keyboard controls and the grouped agent list are implemented. Opening Buddy never clears daemon attention.
 
-Completion/failure notification delivery is implemented for live SDK terminal events with explicit turn IDs. The pill context menu contains only Quit Paseo Buddy; no authorization request is offered. Existing macOS permission is required for delivery; denied permission does not block the overlay. Conversation navigation uses the official agent deep-link helper with the selected daemon identity, and opening this project's conversation has been verified in the real desktop app. Actual notification authorization/banner delivery remains pending. No commit, tag, Release, Registry edit, push or reviewer reply has been performed for this working tree.
+Completion/failure notification delivery is implemented for live SDK terminal events with explicit turn IDs. The pill context menu contains only Quit Paseo Buddy; no authorization request is offered. Existing macOS permission is required for delivery; denied permission does not block the overlay. Conversation navigation uses the official agent deep-link helper with the selected daemon identity, and opening this project's conversation has been verified in the real desktop app. Actual notification authorization/banner delivery remains pending. The v0.1.4 commit/tag/Release are published. Registry edits and reviewer replies have not been performed.
 
 ## Automated evidence
 
@@ -28,7 +28,13 @@ Local validation on 2026-10-15: `npm run check` passed TypeScript checking, runt
 
 ## v0.1.4 download-flow validation
 
-On 2026-10-15, `npm run check` passed all 93 tests, TypeScript and both plugin bundles. `npm run native:check` passed. `node scripts/package-native-release.mjs` compiled both release executables: `file` identified arm64 and x86_64 Mach-O binaries. Both actual generated binary/manifest pairs passed the production download/cache-install path using an injected local-file transport, without launching a window. This validates asset layout and integrity contracts, not live GitHub networking or downloaded-binary GUI execution. All four assets are under `build/release`; no commit, tag, push or release publication occurred.
+On 2026-10-15, `npm run check` passed all 93 tests, TypeScript and both plugin bundles. `npm run native:check` passed. `node scripts/package-native-release.mjs` compiled both release executables: `file` identified arm64 and x86_64 Mach-O binaries. Both actual generated binary/manifest pairs passed the production download/cache-install path using an injected local-file transport, without launching a window. This validates asset layout and integrity contracts, not live GitHub networking or downloaded-binary GUI execution. At the time of that local check, all four assets were under `build/release` and publication had not yet occurred.
+
+## Published v0.1.4 evidence
+
+Published on 2026-10-15 from tag `v0.1.4` at `1c91cc9be021b67e3e2409658393b73d775f69a4`. Workflow ordering was corrected on main in `af46228`; the existing tag was preserved. [Release workflow run 38737135628](https://github.com/jiangliuhong/paseo-buddy/actions/runs/38737135628) passed both build and publish jobs using that tagged source. It passed the 93-test suite, native checks and both architecture builds before publication.
+
+The public Release API reports a non-draft, non-prerelease release with all four assets. Production `ensureCompanion` downloaded the actual GitHub assets for arm64 (365,960 bytes) and x64 (351,232 bytes), verified manifest/source/version/architecture/SHA-256, and installed each in a temporary cache. Both passed; temporary caches were removed and no downloaded executable was launched. Real downloaded-window startup, Intel execution and system notification delivery remain pending.
 
 ## Local desktop and daemon evidence
 
