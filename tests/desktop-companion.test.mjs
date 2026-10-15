@@ -191,3 +191,17 @@ test('action results have their own queue and survive snapshot coalescing and no
  assert.deepEqual(writes[1],{connection:'connected',agents:[]});assert.deepEqual(writes[2],{actionResult:result});
  assert.equal(writes[3].notification.outcome,'completed');publisher.stop();
 });
+
+test('multi-host cards preserve routing identity, unique UI keys and local-only read controls without exposing paths',()=>{
+ const stdin=new EventEmitter();const writes=[];stdin.destroyed=false;stdin.write=value=>{writes.push(JSON.parse(value));return true;};
+ const publisher=nativePublisher({stdin});
+ const agent={id:'same',projectName:'P',workspaceName:'W',name:'Agent',status:'completed_unread',startedAt:null,cwd:'/secret'};
+ publisher.publish({connection:'connected',serverId:'local',hosts:[{serverId:'remote',label:'Remote',connection:'connected'}],
+  agents:[{...agent,serverId:'local',hostLabel:'This Mac'},{...agent,serverId:'remote',hostLabel:'Remote'}]});
+ const [local,remote]=writes[0].agents;
+ assert.notEqual(local.id,remote.id);assert.equal(local.canMarkRead,true);assert.equal(remote.canMarkRead,false);
+ assert.deepEqual(parseAgentDeepLink(remote.conversationUrl),{serverId:'remote',agentId:'same'});
+ assert.equal(remote.conversationAgentId,'same');assert.equal(remote.hostLabel,'Remote');
+ assert.equal(writes[0].hosts[0].serverId,'remote');assert.ok(!JSON.stringify(writes).includes('/secret'));
+ publisher.stop();
+});

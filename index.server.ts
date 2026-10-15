@@ -7,6 +7,8 @@ import { companionControlRpc } from "./shared/companion.js";
 import { createCompanionControl } from "./server/companion-control.js";
 import { AgentState } from "./server/agent-state.js";
 import { agentDirectoryQuery, collectAgentSnapshot } from "./server/agent-snapshot.js";
+import { createHostRelay } from "./server/host-relay.js";
+import { hostRelayRpc } from "./shared/host-relay.js";
 
 /** Read-only snapshots plus lifecycle-owned startup of the verified desktop companion. */
 export default function contribute(server: PluginServerContext, dependencies = { startCompanion: startDesktopCompanion }) {
@@ -19,9 +21,12 @@ export default function contribute(server: PluginServerContext, dependencies = {
   });
   const settings = server.registerSettings(displaySettings);
   const mirror = createDisplayMirror(settings);
-  const companion = createCompanionControl({ displayFile: mirror.file, displayReady: mirror.ready }, dependencies.startCompanion);
+  const relay = createHostRelay();
+  server.handle(hostRelayRpc, input => relay.handle(input));
+  const companion = createCompanionControl({ displayFile: mirror.file, displayReady: mirror.ready, observe: relay.observe }, dependencies.startCompanion);
   server.handle(companionControlRpc, input => companion.handle(input));
   return async () => {
+    relay.stop();
     // Release a pending initial read before waiting for companion startup to abort.
     const results = await Promise.allSettled([
       Promise.resolve().then(() => mirror.stop()),

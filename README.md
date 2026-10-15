@@ -8,7 +8,7 @@ A floating macOS window for keeping track of your Paseo agents.
 
 ## Install
 
-Requires macOS 13+, Paseo ≥ 0.11.1 and npm. Run the Paseo daemon on your Mac in your logged-in desktop session.
+Requires macOS 13+, Paseo ≥ 0.11.2 and npm. Run the Paseo daemon on your Mac in your logged-in desktop session.
 
 1. In **Paseo → Settings → Plugins**, add `git:jiangliuhong/paseo-buddy` and enable it.
 2. Open **Paseo Buddy → 悬浮窗口** and click **下载并启动** (Download and start).
@@ -35,3 +35,11 @@ In **悬浮窗口 → 外观**, adjust opacity, size, icon/text visibility, cust
 Use **启动缓存** to restart the downloaded companion, or **停止** to close it. Disabling the plugin also closes its window. If a download fails, check your GitHub connection and retry **下载并启动**.
 
 Completion banners depend on existing macOS notification permission and Focus settings.
+
+## Multiple hosts (0.1.5)
+
+When the Paseo client mounts Buddy’s sidebar contribution, Buddy observes configured hosts through Paseo’s existing connections and aggregates online agents, unread state and live completion notifications. Remote cards show their host and open the owning conversation. Remote Mark as read is hidden because the borrowed API has no supported attention mutation; opening the conversation follows Paseo’s normal read behavior. Local cards retain Mark as read.
+
+Observation continues for known hosts when the sidebar is hidden. Added/removed hosts reconcile when the sidebar contribution mounts again. Closing the Paseo client expires remote state within 15 seconds; local daemon observation continues. Offline host summaries remain visible while the relay is active, and badges count available agents only. Limits are 64 configured hosts and 5,000 total agents.
+
+The development branch targets 0.1.5 and requires its matching native release. Until those assets are published, validate using the developer build; old native binaries do not implement these changes.

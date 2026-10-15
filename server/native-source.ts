@@ -13,10 +13,15 @@ struct Agent: Decodable, Equatable {
     let startedAt: String?
     let conversationUrl: String?
     let attentionTimestamp: String?
+    let conversationAgentId: String?
+    let hostLabel: String?
+    let canMarkRead: Bool?
 }
+struct HostStatus: Decodable, Equatable { let serverId: String; let label: String; let connection: String }
 struct Snapshot: Decodable, Equatable {
     let connection: String
     let agents: [Agent]
+    var hosts: [HostStatus]? = nil
 }
 struct Appearance: Decodable {
     let opacity: Double
@@ -202,6 +207,7 @@ final class PillView: NSView {
     var pressed: (() -> Void)?
     var dismissed: (() -> Void)?
     var moved: ((NSPoint) -> Void)?
+    var menuTracking: ((Bool) -> Void)?
     var counts = "—"
     var countColor = NSColor.secondaryLabelColor
     var unread = ""
@@ -301,15 +307,25 @@ final class PillView: NSView {
         else { super.keyDown(with: event) }
     }
     override func rightMouseDown(with event: NSEvent) {
-        NSMenu.popUpContextMenu(contextMenu(), with: event, for: self)
+        guard let window = window else { return }
+        showContextMenu(at: window.convertPoint(toScreen: event.locationInWindow))
     }
     func contextMenu() -> NSMenu {
         let menu = NSMenu()
         menu.addItem(withTitle: "Quit Paseo Buddy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         return menu
     }
+    func showContextMenu(at screenPoint: NSPoint) {
+        // Screen coordinates avoid the expanded panel's offset pill frame. Menu tracking
+        // must not participate in dragging or let nested state updates move the anchor.
+        dragged = true
+        menuTracking?(true)
+        defer { menuTracking?(false) }
+        contextMenu().popUp(positioning: nil, at: screenPoint, in: nil)
+    }
     override func accessibilityPerformShowMenu() -> Bool {
-        contextMenu().popUp(positioning: nil, at: NSPoint(x: bounds.midX, y: bounds.midY), in: self)
+        guard let window = window else { return false }
+        showContextMenu(at: window.convertPoint(toScreen: convert(NSPoint(x: bounds.midX, y: bounds.midY), to: nil)))
         return true
     }
     override func accessibilityPerformPress() -> Bool { pressed?(); return true }
@@ -324,6 +340,7 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     let listSurface = ListSurface()
     var anchor = NSPoint.zero
     var expanded = false
+    var trackingMenu = false
     var scale: CGFloat = 1
     var listMinHeight: CGFloat = 140
     var listMaxHeight: CGFloat = 360
@@ -357,7 +374,7 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         panel.title = "Paseo Buddy"
         panel.acceptsMouseMovedEvents = true
         panel.isFloatingPanel = true; panel.becomesKeyOnlyIfNeeded = true
-        panel.level = .popUpMenu; panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.level = .floating; panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
         panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false
         let root = NSView(frame: panel.frame)
@@ -375,8 +392,13 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             if self.panel.isKeyWindow { self.panel.makeFirstResponder(self.pill) }
         }
         panel.dismissed = pill.dismissed
-        pill.moved = { [weak self] target in
+        pill.menuTracking = { [weak self] tracking in
             guard let self = self else { return }
+            self.trackingMenu = tracking
+            if !tracking { self.layout(); self.render() }
+        }
+        pill.moved = { [weak self] target in
+            guard let self = self, !self.trackingMenu else { return }
             let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main
             guard let screen = screen else { return }
             self.anchor = clampedPillAnchor(target, pillSize: self.pill.frame.size, screen: screen.frame)
@@ -471,7 +493,7 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         preferences.set(anchor.x, forKey: "x"); preferences.set(anchor.y, forKey: "y")
     }
     func markRead(_ agent: Agent) {
-        guard snapshot.connection == "connected", agent.status == "completed_unread",
+        guard snapshot.connection == "connected", agent.status == "completed_unread", agent.canMarkRead != false,
               !readRequests.values.contains(where: { $0.agentId == agent.id }),
               snapshot.agents.contains(where: { $0.id == agent.id && $0.status == "completed_unread" && $0.attentionTimestamp == agent.attentionTimestamp }) else { return }
         let id = UUID().uuidString
@@ -496,6 +518,7 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
     func toggle() { expanded.toggle(); layout(); render() }
     func layout() {
+        guard !trackingMenu else { return }
         guard let panel = panel else { return }
         pill.scale = scale
         let pillSize = pill.preferredSize
@@ -551,10 +574,14 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         }
         rows.addArrangedSubview(text("Agents", width: contentWidth, size: 16, weight: .semibold))
         rows.addArrangedSubview(text(connected ? "\(running) running  ·  \(unread) unread  ·  \(waiting) waiting" : "Paseo \(snapshot.connection)", width: contentWidth, size: 10, color: .secondaryLabelColor))
+        for host in snapshot.hosts ?? [] where host.connection != "connected" {
+            rows.addArrangedSubview(text("\(host.label) · \(host.connection)", width: contentWidth, size: 10, color: .secondaryLabelColor))
+        }
         if let actionError = actionError { rows.addArrangedSubview(text(actionError, width: contentWidth, size: 10, color: .systemRed)) }
         if connected && snapshot.agents.isEmpty {
-            rows.addArrangedSubview(text("All caught up", width: contentWidth, size: 13, weight: .medium))
-            rows.addArrangedSubview(text("No running agents or unread completions.", width: contentWidth, size: 11, color: .secondaryLabelColor))
+            let incomplete = snapshot.hosts?.contains { $0.connection != "connected" } ?? false
+            rows.addArrangedSubview(text(incomplete ? "Connected hosts caught up" : "All caught up", width: contentWidth, size: 13, weight: .medium))
+            rows.addArrangedSubview(text(incomplete ? "Offline hosts may have additional activity." : "No running agents or unread completions.", width: contentWidth, size: 11, color: .secondaryLabelColor))
         }
         if connected {
             for (status, title, color) in [("running", "Running", NSColor.systemRed), ("completed_unread", "Completed unread", NSColor.systemGreen), ("waiting_permission", "Waiting permission", NSColor.systemOrange)] {
@@ -566,11 +593,12 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                     let contents = NSStackView(); contents.orientation = .vertical; contents.alignment = .leading; contents.spacing = 6 * scale
                     contents.translatesAutoresizingMaskIntoConstraints = false
                     card.addSubview(contents)
+                    if let host = agent.hostLabel { contents.addArrangedSubview(text(host, width: textWidth, size: 10, weight: .medium, color: .secondaryLabelColor, lines: 1)) }
                     contents.addArrangedSubview(text("\(agent.projectName)  ·  \(agent.workspaceName)", width: textWidth, size: 10, weight: .medium, color: .secondaryLabelColor, lines: 1))
                     contents.addArrangedSubview(text(agent.name, width: textWidth, size: 12, weight: .semibold, lines: 2))
                     let footer = NSStackView(); footer.orientation = .horizontal; footer.alignment = .centerY; footer.spacing = 8 * scale
-                    let destination = conversationURL(agent.conversationUrl, agentId: agent.id)
-                    let canMarkRead = agent.status == "completed_unread"
+                    let destination = conversationURL(agent.conversationUrl, agentId: agent.conversationAgentId ?? agent.id)
+                    let canMarkRead = agent.status == "completed_unread" && agent.canMarkRead != false
                     let buttonSpace: CGFloat = (destination == nil ? 0 : 102) + (canMarkRead ? 88 : 0)
                     let duration = text("\(title) · \(elapsed(agent.startedAt))", width: max(1, textWidth - buttonSpace * scale), size: 10, color: .secondaryLabelColor, lines: 1)
                     elapsedFields.append((duration, agent.startedAt, title))

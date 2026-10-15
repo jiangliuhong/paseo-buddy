@@ -21,6 +21,9 @@ A lightweight macOS floating pill inspired by the ChatGPT desktop launcher. The 
 13. Expose opacity, size, icon visibility, text visibility, custom single-line text and adaptive list height bounds under Paseo plugin settings. Persist them per installation and apply saved changes live without losing the floating pill position. Zero running/unread counts hide their badges; hidden content must not reserve blank space. Keep the pill clickable when all content is hidden.
 14. Native release builds use bundled Swift/AppKit source and Apple tools in CI. Users download bounded, SHA-256-verified release executables without installing developer tools. Preserve legacy Electron caches and invalid/unknown native caches for explicit cleanup.
 
+15. Aggregate agents from configured Paseo hosts through the desktop client’s borrowed APIs, with host labels, independent recovery and host-scoped conversation/notification identity. Preserve local observation when the client relay disappears; discard stale remote state after 15 seconds. Remote read controls remain unavailable until a supported API exists.
+16. Opening or dismissing the pill context menu must preserve the pill anchor in collapsed and expanded modes.
+
 ## Acceptance scenarios
 
 - Start three concurrent turns: show 3.
@@ -28,12 +31,16 @@ A lightweight macOS floating pill inspired by the ChatGPT desktop launcher. The 
 - Request permission: mark waiting and adjust running count per documented semantics.
 - Reconnect mid-turn: reconcile with authoritative daemon snapshot.
 - Repeat an event: no duplicate completion notification.
+- Two hosts return the same agent/turn ID: show both agents and notify independently.
+- One remote host disconnects: clear only its agents and show its connection status.
+- Close the Paseo client: expire remote state within 15 seconds and retain local observation.
+- Open/dismiss the context menu on a collapsed/expanded pill: preserve its anchor.
 - Quit desktop process: daemon plugin remains stable.
 - Restart daemon: desktop process reconnects and refreshes state.
 
 ## Out of scope
 
-Animated pet, task execution controls, cloud sync, Windows/Linux packaging, cross-host aggregation, and arbitrary agent commands.
+Animated pet, task execution controls, cloud sync, Windows/Linux packaging, and arbitrary agent commands.
 
 ## Verified integration and limits
 

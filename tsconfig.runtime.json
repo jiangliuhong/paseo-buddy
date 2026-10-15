@@ -1,5 +1,5 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "noEmit": false, "outDir": "build", "rootDir": "." },
-  "include": ["index.server.ts", "server/**/*.ts", "shared/**/*.ts"]
+  "include": ["index.server.ts", "server/**/*.ts", "shared/**/*.ts", "client/host-observer.ts"]
 }

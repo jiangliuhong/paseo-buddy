@@ -1,5 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import type { BuddyState } from "../shared/agents.js";
+import { agentKey } from "../shared/agents.js";
 import { nativeMarkReadSchema, type NativeActionResult, type NativeMarkRead } from "../shared/native-actions.js";
 import { markAgentRead } from "./agent-attention.js";
 
@@ -22,7 +23,8 @@ export function nativeActionBridge(child: ChildProcess, options: {
     seen.add(command.requestId);
     if (seen.size > 256) seen.delete(seen.values().next().value!);
     const state = options.state();
-    const agent = state.agents.find(agent => agent.id === command.agentId && agent.status === "completed_unread");
+    const agent = state.agents.find(agent => agentKey(agent) === command.agentId && agent.status === "completed_unread"
+      && (!agent.serverId || agent.serverId === state.serverId));
     if (state.connection !== "connected" || !agent || (agent.attentionTimestamp ?? null) !== command.attentionTimestamp) {
       reply(command, false, "This completion changed. Refresh the list and try again."); return;
     }
@@ -33,7 +35,7 @@ export function nativeActionBridge(child: ChildProcess, options: {
     const task = Promise.resolve().then(async () => {
       if (stopped) return;
       try {
-        await (options.markRead ?? markAgentRead)({ agentId: command.agentId, attentionTimestamp: command.attentionTimestamp,
+        await (options.markRead ?? markAgentRead)({ agentId: agent.id, attentionTimestamp: command.attentionTimestamp,
           serverId: state.serverId, signal: controller.signal });
         reply(command, true, null);
       } catch { reply(command, false, "Could not mark as read. Refresh the list and try again."); }

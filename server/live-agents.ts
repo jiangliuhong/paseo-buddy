@@ -77,7 +77,7 @@ export function startLiveAgents(options: {
           notifications?.stop();
           publish({ connection: "disconnected", agents: [] });
         };
-        if (options.notify) notifications = observeTurnNotifications({ client: currentClient, seen: notifiedTurns,
+        if (options.notify) notifications = observeTurnNotifications({ client: currentClient, serverId, seen: notifiedTurns,
           notify: notification => { if (current()) options.notify?.(notification); }, onError: fail });
         // The SDK delivers the current snapshot and buffers updates before listener attachment.
         unsubscribe = directory.subscription.subscribe({

@@ -1,5 +1,5 @@
 /** Fixed public release assets only; no credentials or caller-selected URLs. */
-export const nativeReleaseTag = "v0.1.4";
+export const nativeReleaseTag = "v0.1.5";
 export const nativeReleaseBase = `https://github.com/jiangliuhong/paseo-buddy/releases/download/${nativeReleaseTag}`;
 export const nativeAssetName = (arch: string) => {
   if (!["arm64", "x64"].includes(arch)) throw new Error("Unsupported companion architecture");

@@ -5,6 +5,7 @@ import type { BuddyNotification } from "../shared/agents.js";
 /** Only live, explicitly identified terminal events can produce notifications. */
 export function observeTurnNotifications(options: {
   client: PaseoClient;
+  serverId?: string;
   seen: Set<string>;
   notify: (notification: BuddyNotification) => void;
   onError: () => void;
@@ -33,7 +34,7 @@ export function observeTurnNotifications(options: {
         if (event.type !== "turn_completed" && event.type !== "turn_failed") return;
         // Optional in the official protocol: never fabricate a turn identity from status/time.
         if (!event.turnId) return;
-        const id = createHash("sha256").update(JSON.stringify([agent.id, event.turnId])).digest("hex");
+        const id = createHash("sha256").update(JSON.stringify(options.serverId ? [options.serverId, agent.id, event.turnId] : [agent.id, event.turnId])).digest("hex");
         if (options.seen.has(id)) return;
         options.seen.add(id);
         if (options.seen.size > 10000) options.seen.delete(options.seen.values().next().value!);

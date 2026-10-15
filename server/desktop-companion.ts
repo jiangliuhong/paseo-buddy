@@ -1,3 +1,4 @@
+import { agentKey } from "../shared/agents.js";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { access, lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
@@ -15,7 +16,7 @@ import type { BuddyNotification, BuddyState } from "../shared/agents.js";
 import type { NativeActionResult } from "../shared/native-actions.js";
 import { nativeActionBridge } from "./native-actions.js";
 
-export const companionVersion = "0.1.4-native.1";
+export const companionVersion = "0.1.5-native.1";
 const nativeRecipe = "appkit-bundle-1";
 const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -24,7 +25,7 @@ const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <key>CFBundleName</key><string>Paseo Buddy</string>
 <key>CFBundleExecutable</key><string>Paseo Buddy</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.4</string>
+<key>CFBundleShortVersionString</key><string>0.1.5</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><true/>
@@ -176,9 +177,14 @@ export function nativePublisher(child: ChildProcess) {
     publish(state: BuddyState) {
       if (stopped) return;
       const message = JSON.stringify({ connection: state.connection,
-        agents: state.agents.slice(0, 5001).map(({ id, projectName, workspaceName, name, status, startedAt, attentionTimestamp }) =>
-          ({ id, projectName, workspaceName, name, status, startedAt, attentionTimestamp,
-            ...(state.serverId?.trim() && id.trim() ? { conversationUrl: buildAgentDeepLink({ serverId: state.serverId, agentId: id }) } : {}) })),
+        ...(state.hosts ? { hosts: state.hosts } : {}),
+        agents: state.agents.slice(0, 5001).map(agent => {
+          const { id, projectName, workspaceName, name, status, startedAt, attentionTimestamp, hostLabel } = agent;
+          const serverId = agent.serverId ?? state.serverId;
+          return { id: agentKey(agent), projectName, workspaceName, name, status, startedAt, attentionTimestamp,
+            ...(agent.serverId ? { conversationAgentId: id, hostLabel, canMarkRead: agent.serverId === state.serverId } : {}),
+            ...(serverId?.trim() && id.trim() ? { conversationUrl: buildAgentDeepLink({ serverId, agentId: id }) } : {}) };
+        }),
       }) + "\n";
       latest = state.agents.length <= 5000 && Buffer.byteLength(message) <= 1024 * 1024 ? message : '{"connection":"disconnected","agents":[]}\n';
       send();

@@ -58,6 +58,20 @@ test('failures expose only a fixed retry message and never transport credentials
   assert.match(f.replies[0].error,/try again/);await f.bridge.stop();
 });
 
+test('host-scoped card IDs route only local reads, even when remote agents share the same ID', async () => {
+  const f = fixture();
+  f.state = { connection: 'connected', serverId: 'local', agents: [
+    { id: 'a', serverId: 'remote', status: 'completed_unread', attentionTimestamp: stamp },
+    { id: 'a', serverId: 'local', status: 'completed_unread', attentionTimestamp: stamp },
+  ] };
+  f.send(command({ agentId: JSON.stringify(['remote', 'a']) }));
+  f.send(command({ agentId: JSON.stringify(['local', 'a']) }));
+  await settle();
+  assert.equal(f.calls.length, 1); assert.equal(f.calls[0].agentId, 'a'); assert.equal(f.calls[0].serverId, 'local');
+  assert.equal(f.replies[0].success, false); assert.equal(f.replies[1].success, true);
+  await f.bridge.stop();
+});
+
 test('shutdown cancels in-flight reads, detaches output and ignores late commands/replies',async()=>{
   let cancelled=false;
   const f=fixture(({signal})=>new Promise((_,reject)=>signal.addEventListener('abort',()=>{cancelled=true;reject(Error('cancelled'));},{once:true})));
