@@ -16,7 +16,7 @@ import type { BuddyNotification, BuddyState } from "../shared/agents.js";
 import type { NativeActionResult } from "../shared/native-actions.js";
 import { nativeActionBridge } from "./native-actions.js";
 
-export const companionVersion = "0.1.5-native.1";
+export const companionVersion = "0.1.6-native.1";
 const nativeRecipe = "appkit-bundle-1";
 const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -25,7 +25,7 @@ const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <key>CFBundleName</key><string>Paseo Buddy</string>
 <key>CFBundleExecutable</key><string>Paseo Buddy</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.5</string>
+<key>CFBundleShortVersionString</key><string>0.1.6</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><true/>

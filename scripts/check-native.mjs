@@ -87,6 +87,41 @@ for factor: CGFloat in [0.75, 1, 1.5] {
         precondition(hitPill.hitTest(outside) == nil)
     }
 }
+// Background clicks must toggle immediately without first activating the accessory panel.
+precondition(hitPill.acceptsFirstMouse(for: nil))
+let manyAgents = (0..<5000).map { i in
+    Agent(id: String(i), projectName: "Project", workspaceName: "Workspace", name: "Agent \(i)",
+          status: ["waiting_permission", "running", "completed_unread"][i % 3], startedAt: nil,
+          conversationUrl: nil, attentionTimestamp: nil, conversationAgentId: nil, hostLabel: nil, canMarkRead: nil)
+}
+let expectedOrder = ["running", "completed_unread", "waiting_permission"].flatMap { status in manyAgents.filter { $0.status == status } }
+var pagedAgents: [Agent] = []
+let firstPage = AgentListPage(agents: manyAgents, requestedIndex: -1)
+precondition(firstPage.index == 0 && firstPage.count == 167)
+for index in 0..<firstPage.count {
+    let page = AgentListPage(agents: manyAgents, requestedIndex: index)
+    precondition(page.agents.count <= 30, "AppKit card construction must stay bounded for 5,000 agents")
+    pagedAgents.append(contentsOf: page.agents)
+}
+precondition(pagedAgents == expectedOrder, "Paging must preserve grouping and expose every agent exactly once")
+precondition(AgentListPage(agents: manyAgents, requestedIndex: 999).index == 166)
+let shrunkPage = AgentListPage(agents: Array(manyAgents.prefix(2)), requestedIndex: 166)
+precondition(shrunkPage.index == 0 && shrunkPage.agents.count == 2)
+let emptyPage = AgentListPage(agents: [], requestedIndex: 166)
+precondition(emptyPage.index == 0 && emptyPage.count == 1 && emptyPage.agents.isEmpty)
+let listSnapshot = Snapshot(connection: "connected", agents: manyAgents)
+let renderState = ListRenderState(snapshot: listSnapshot, scale: 1, page: 0, pendingAgents: [], error: nil)
+precondition(renderState == ListRenderState(snapshot: listSnapshot, scale: 1, page: 0, pendingAgents: [], error: nil))
+precondition(renderState != ListRenderState(snapshot: listSnapshot, scale: 1.5, page: 0, pendingAgents: [], error: nil))
+precondition(renderState != ListRenderState(snapshot: listSnapshot, scale: 1, page: 1, pendingAgents: [], error: nil))
+precondition(renderState != ListRenderState(snapshot: listSnapshot, scale: 1, page: 0, pendingAgents: ["1"], error: nil))
+precondition(renderState != ListRenderState(snapshot: listSnapshot, scale: 1, page: 0, pendingAgents: [], error: "Retry"))
+precondition(renderState != ListRenderState(snapshot: Snapshot(connection: "disconnected", agents: []), scale: 1, page: 0, pendingAgents: [], error: nil))
+precondition(renderState != ListRenderState(snapshot: listSnapshot, scale: 1, page: 0, pendingAgents: [], error: nil, width: 200))
+let elapsedBuddy = Buddy()
+precondition(elapsedBuddy.elapsed("2026-10-15T10:00:00.000Z") != "—")
+precondition(elapsedBuddy.elapsed("2026-10-15T10:00:00Z") != "—")
+precondition(elapsedBuddy.elapsed("invalid") == "—")
 // Drag bounds use the physical display, not the visible frame that reserves 80pt for the Dock.
 let dockReservedFrame = NSRect(x: 0, y: 80, width: 1440, height: 796)
 precondition(clampedPillAnchor(NSPoint(x: 100, y: -200), pillSize: pill, screen: screen).y == screen.minY)

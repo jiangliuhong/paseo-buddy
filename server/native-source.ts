@@ -23,6 +23,29 @@ struct Snapshot: Decodable, Equatable {
     let agents: [Agent]
     var hosts: [HostStatus]? = nil
 }
+// Bound AppKit view/constraint work independently of the supported directory size.
+struct AgentListPage: Equatable {
+    static let size = 30
+    let index: Int
+    let count: Int
+    let agents: [Agent]
+    init(agents: [Agent], requestedIndex: Int) {
+        let ordered = ["running", "completed_unread", "waiting_permission"].flatMap { status in
+            agents.filter { $0.status == status }
+        }
+        count = max(1, (ordered.count + Self.size - 1) / Self.size)
+        index = min(max(0, requestedIndex), count - 1)
+        self.agents = Array(ordered.dropFirst(index * Self.size).prefix(Self.size))
+    }
+}
+struct ListRenderState: Equatable {
+    let snapshot: Snapshot
+    let scale: CGFloat
+    let page: Int
+    let pendingAgents: Set<String>
+    let error: String?
+    var width: CGFloat = 0
+}
 struct Appearance: Decodable {
     let opacity: Double
     let scale: Double
@@ -151,6 +174,10 @@ final class ConversationButton: AgentActionButton {
     var destination: URL?
     @objc func openConversation() { if let destination = destination { NSWorkspace.shared.open(destination) } }
 }
+final class PageButton: AgentActionButton {
+    var pressed: (() -> Void)?
+    @objc func changePage() { pressed?() }
+}
 final class MarkReadButton: AgentActionButton {
     var pressed: (() -> Void)?
     @objc func markRead() { pressed?() }
@@ -227,6 +254,7 @@ final class PillView: NSView {
     var origin = NSPoint.zero
     var dragged = false
     override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func becomeFirstResponder() -> Bool { needsDisplay = true; return true }
     override func resignFirstResponder() -> Bool { needsDisplay = true; return true }
     override func updateTrackingAreas() {
@@ -345,6 +373,9 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     var listMinHeight: CGFloat = 140
     var listMaxHeight: CGFloat = 360
     var listContentHeight: CGFloat = 0
+    var listPage = 0
+    var renderedList: ListRenderState?
+    var renderScheduled = false
     var snapshot = Snapshot(connection: "connecting", agents: [])
     let preferences = UserDefaults(suiteName: ProcessInfo.processInfo.environment["PASEO_BUDDY_PREFERENCES_SUITE"] ?? "io.github.jiangliuhong.paseobuddy.native.preferences")!
     var elapsedFields: [(NSTextField, String?, String)] = []
@@ -354,7 +385,11 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     var screenObserver: NSObjectProtocol?
     let environment = ProcessInfo.processInfo.environment
     var decoder = JSONDecoder()
-    let dates = ISO8601DateFormatter()
+    let dates: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    let wholeSecondDates = ISO8601DateFormatter()
     lazy var notificationCenter = UNUserNotificationCenter.current()
     var seenNotices = Set<String>()
     var noticeOrder: [String] = []
@@ -439,7 +474,7 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                             self.readRequests = self.readRequests.filter { _, pending in
                                 state.connection == "connected" && state.agents.contains { $0.id == pending.agentId && $0.status == "completed_unread" && $0.attentionTimestamp == pending.attentionTimestamp }
                             }
-                            self.render()
+                            self.scheduleRender()
                         }
                     } else if let message = try? self.decoder.decode(NotificationMessage.self, from: line) {
                         self.deliver(message.notification)
@@ -447,7 +482,7 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
                               let pending = self.readRequests[message.actionResult.requestId], pending.agentId == message.actionResult.agentId {
                         self.readRequests.removeValue(forKey: message.actionResult.requestId)
                         self.actionError = message.actionResult.success ? nil : (message.actionResult.error ?? "Could not mark as read. Please try again.")
-                        self.render()
+                        self.scheduleRender()
                     }
                 }
             }
@@ -516,6 +551,16 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         scale = next; pill.showIcon = values.iconVisible; pill.showText = values.textVisible; pill.customText = values.textValue
         if changed { layout(); render() }
     }
+    func scheduleRender() {
+        guard !renderScheduled else { return }
+        renderScheduled = true
+        // Merge snapshot bursts instead of rebuilding the native list for each IPC line.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self = self else { return }
+            self.renderScheduled = false
+            self.render()
+        }
+    }
     func toggle() { expanded.toggle(); layout(); render() }
     func layout() {
         guard !trackingMenu else { return }
@@ -535,10 +580,7 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
     func elapsed(_ value: String?) -> String {
         guard let value = value else { return "—" }
-        dates.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        var start = dates.date(from: value)
-        if start == nil { dates.formatOptions = [.withInternetDateTime]; start = dates.date(from: value) }
-        guard let start = start else { return "—" }
+        guard let start = dates.date(from: value) ?? wholeSecondDates.date(from: value) else { return "—" }
         let interval = Date().timeIntervalSince(start)
         guard interval.isFinite, abs(interval) < 1e12 else { return "—" }
         let seconds = max(0, Int(interval))
@@ -556,7 +598,14 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         pill.setAccessibilityValue(connected ? "\(running) running, \(unread) unread, \(waiting) waiting permission" : snapshot.connection)
         if pill.preferredSize != oldPillSize { layout() }
         pill.needsDisplay = true
-        guard expanded else { elapsedFields.removeAll(); return }
+        guard expanded else { return }
+        let page = AgentListPage(agents: snapshot.connection == "connected" ? snapshot.agents : [], requestedIndex: listPage)
+        listPage = page.index
+        let state = ListRenderState(snapshot: snapshot, scale: scale, page: listPage,
+                                    pendingAgents: Set(readRequests.values.map { $0.agentId }), error: actionError, width: scroll.contentSize.width)
+        // Retain the document and scroll position across collapse/reopen and geometry changes.
+        guard renderedList != state else { return }
+        renderedList = state
         let focusedAction = (panel.firstResponder as? AgentActionButton)?.focusKey
         var restoreFocus: AgentActionButton?
         let offset = scroll.contentView.bounds.origin
@@ -583,11 +632,30 @@ final class Buddy: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
             rows.addArrangedSubview(text(incomplete ? "Connected hosts caught up" : "All caught up", width: contentWidth, size: 13, weight: .medium))
             rows.addArrangedSubview(text(incomplete ? "Offline hosts may have additional activity." : "No running agents or unread completions.", width: contentWidth, size: 11, color: .secondaryLabelColor))
         }
+        if connected && page.count > 1 {
+            let navigation = NSStackView(); navigation.orientation = .horizontal; navigation.spacing = 8 * scale
+            for (title, step, enabled) in [("Previous", -1, page.index > 0), ("Next", 1, page.index + 1 < page.count)] {
+                let button = PageButton(title: title, target: nil, action: nil)
+                button.target = button; button.action = #selector(PageButton.changePage)
+                button.actionKind = "page"; button.agentId = title; button.scale = scale
+                button.isEnabled = enabled; button.font = NSFont.systemFont(ofSize: 11 * scale)
+                button.pressed = { [weak self] in
+                    guard let self = self else { return }
+                    self.listPage += step
+                    self.scroll.contentView.scroll(to: .zero)
+                    self.render()
+                }
+                if button.focusKey == focusedAction { restoreFocus = button }
+                navigation.addArrangedSubview(button)
+            }
+            navigation.addArrangedSubview(text("\(page.index + 1) / \(page.count)", width: 90 * scale, size: 10, color: .secondaryLabelColor))
+            rows.addArrangedSubview(navigation)
+        }
         if connected {
             for (status, title, color) in [("running", "Running", NSColor.systemRed), ("completed_unread", "Completed unread", NSColor.systemGreen), ("waiting_permission", "Waiting permission", NSColor.systemOrange)] {
-                let agents = snapshot.agents.filter { $0.status == status }
+                let agents = page.agents.filter { $0.status == status }
                 if agents.isEmpty { continue }
-                rows.addArrangedSubview(text("●  \(title)  ·  \(agents.count)", width: contentWidth, size: 10, weight: .semibold, color: color))
+                rows.addArrangedSubview(text("●  \(title)  ·  \(snapshot.agents.filter { $0.status == status }.count)", width: contentWidth, size: 10, weight: .semibold, color: color))
                 for agent in agents {
                     let card = AgentCardView(); card.scale = scale
                     let contents = NSStackView(); contents.orientation = .vertical; contents.alignment = .leading; contents.spacing = 6 * scale

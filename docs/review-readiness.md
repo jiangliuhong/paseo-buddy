@@ -113,3 +113,13 @@ The middle waveform and inline running number have been removed. Running and unr
 The pill’s custom blue focus stroke and AppKit focus ring have been removed. Clicking it retains the clean capsule outline; keyboard handlers and first-responder behavior remain, with only neutral toggle-background feedback. Native source/model compilation and the plugin build pass for this presentation-only change.
 
 Current list bounds default to 140–360 points and are configurable in appearance settings. Native checks cover legacy defaults, invalid bounds and content fitting at all supported scales; visual acceptance of short/long lists remains manual.
+
+## Pill expansion responsiveness (2026-10-16, working tree)
+
+Code inspection found unbounded synchronous AppKit card/constraint construction on expansion and every expanded snapshot update. The working tree bounds construction to 30 cards with Previous/Next controls, reuses unchanged documents on reopening, and coalesces IPC render bursts over 50 ms. Badge totals still include the complete snapshot. The inactive pill accepts the first mouse click, and elapsed labels use preconfigured date formatters. Native checks cover all 5,000 agents across pages without omissions/duplicates, status ordering, page clamping after removals, cache invalidation inputs, first-mouse acceptance and both timestamp formats.
+
+The 107-test Node suite, TypeScript checks and plugin build pass. Native checks compile the embedded Swift source, and `npm run native:build` produced the current arm64 companion successfully. This does not establish a measured desktop latency improvement: the reported intermittent delay has not been reproduced in a real desktop session. Real inactive-window clicks, rapid updates and paging remain GUI acceptance items. These changes require a matching newly built native companion; the published release does not contain this working-tree fix.
+
+## v0.1.6 release preparation (2026-10-16)
+
+Updated the plugin package/lock, native companion version, Info.plist, fixed download tag and workflow default together to v0.1.6. `npm run check` passed all 107 tests, TypeScript checking and both plugin bundles. The actual-source native checks passed. `node scripts/package-native-release.mjs` produced arm64 and x86_64 Mach-O executables and matching manifests. Both generated pairs passed the production download/cache-install path using an injected local-file transport, including subsequent validated cache reuse, without launching a window. This establishes packaging and source/version/checksum compatibility, not live GitHub download or GUI latency acceptance. Release notes explicitly retain those limitations.

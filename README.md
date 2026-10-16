@@ -25,7 +25,7 @@ After updating, click **下载并启动** again if a new companion is required.
 ## Use
 
 - **Red badge:** running agents. **Green badge:** completed, unread agents. Zero-count badges are hidden.
-- Click the pill to expand or collapse the agent list. Permission waits appear separately.
+- Click the pill to expand or collapse the agent list. Permission waits appear separately. Large lists show 30 agents per page with Previous/Next controls; badges still count all agents.
 - Click **Open in Paseo** to open a conversation, or **Mark as read** to clear a completed agent's unread state. Opening the list alone does not mark anything read.
 - Drag the pill to move it. Right-click and choose **Quit Paseo Buddy** to exit.
 - Use **Tab** to focus, **Space/Return** to toggle the list, **Escape** to collapse it, and **Shift-F10** to open the menu.
@@ -42,4 +42,4 @@ When the Paseo client mounts Buddy’s sidebar contribution, Buddy observes conf
 
 Observation continues for known hosts when the sidebar is hidden. Added/removed hosts reconcile when the sidebar contribution mounts again. Closing the Paseo client expires remote state within 15 seconds; local daemon observation continues. Offline host summaries remain visible while the relay is active, and badges count available agents only. Limits are 64 configured hosts and 5,000 total agents.
 
-Version 0.1.5 requires its matching native release. After updating the plugin, stop the old companion and choose **下载并启动** to install the matching executable; old native binaries do not implement these changes.
+Version 0.1.6 requires its matching native release. After updating the plugin, stop the old companion and choose **下载并启动** to install the matching executable; old native binaries do not implement these changes.
