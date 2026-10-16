@@ -79,3 +79,35 @@ test('shutdown cancels in-flight reads, detaches output and ignores late command
   assert.equal(cancelled,true);assert.deepEqual(f.replies,[]);assert.equal(f.stdout.listenerCount('data'),0);
   f.send(command());await settle();assert.equal(f.calls.length,1);
 });
+
+test('quick-chat IPC accepts bounded fragmented Unicode messages but rejects injected methods/paths',async()=>{
+  const stdout=new PassThrough();const calls=[];const replies=[];let stops=0;
+  const bridge=nativeActionBridge({stdout},{state:()=>({connection:'connected',agents:[]}),reply(){},
+    quickChat:{async handle(command){calls.push(command);return {kind:'result',requestId:command.requestId,ok:true,error:null};},async stop(){stops++;}},
+    quickChatReply:reply=>replies.push(reply)});
+  const request={type:'quick_chat_create',requestId:randomUUID(),draftId:randomUUID(),projectId:'p',workspaceId:null,
+    selection:{kind:'profile',profileId:'saved'},messageId:randomUUID(),text:'消息'.repeat(4000)};
+  const bytes=Buffer.from(JSON.stringify(request)+'\n');
+  for(let i=0;i<bytes.length;i+=911)stdout.write(bytes.subarray(i,i+911));
+  stdout.write(JSON.stringify({...request,requestId:randomUUID(),cwd:'/private/arbitrary'})+'\n');
+  stdout.write(JSON.stringify({...request,requestId:randomUUID(),type:'sdk_call'})+'\n');
+  await settle();assert.equal(calls.length,1);assert.equal(calls[0].text,request.text);assert.equal(replies.length,1);
+  await bridge.stop();assert.equal(stops,1);assert.equal(stdout.listenerCount('data'),0);
+});
+
+test('oversized quick-chat line is discarded through its newline without corrupting the next command',async()=>{
+  const stdout=new PassThrough();const calls=[];
+  const bridge=nativeActionBridge({stdout},{state:()=>({connection:'connected',agents:[]}),reply(){},
+    quickChat:{async handle(command){calls.push(command);return {kind:'result',requestId:command.requestId,ok:true,error:null};},async stop(){}},quickChatReply(){}});
+  for(let i=0;i<110;i++)stdout.write('x'.repeat(1024));
+  stdout.write('\n');stdout.write(JSON.stringify({type:'quick_chat_options',requestId:randomUUID()})+'\n');
+  await settle();assert.equal(calls.length,1);await bridge.stop();
+});
+
+test('quick-chat shutdown cancels queued actions and suppresses late responses',async()=>{
+  const stdout=new PassThrough();const replies=[];let resolve;
+  const bridge=nativeActionBridge({stdout},{state:()=>({connection:'connected',agents:[]}),reply(){},
+    quickChat:{async handle(command){await new Promise(r=>resolve=r);return {kind:'result',requestId:command.requestId,ok:true,error:null};},async stop(){resolve?.();}},quickChatReply:r=>replies.push(r)});
+  stdout.write(JSON.stringify({type:'quick_chat_options',requestId:randomUUID()})+'\n');await settle();
+  await bridge.stop();assert.deepEqual(replies,[]);assert.equal(stdout.listenerCount('data'),0);
+});

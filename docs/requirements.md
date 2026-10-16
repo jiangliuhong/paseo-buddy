@@ -42,6 +42,10 @@ A lightweight macOS floating pill inspired by the ChatGPT desktop launcher. The 
 
 Animated pet, task execution controls, cloud sync, Windows/Linux packaging, and arbitrary agent commands.
 
+## Quick chat — incremental implementation
+
+The confirmed quick-chat flow is implemented in the 0.1.7 source: a separate pill button opens a compact native dialog with Project selection, new auto-named or existing workspaces, saved Agent profiles or Provider → model selection, and continuing text conversation. The dialog supports Cmd-Enter, newline/IME input, explicit retry/sync, supported conversation navigation and closing without stopping tasks. The Node service/IPC and actual Swift controller have injected-client/contract coverage. End-to-end real create/send, real-window focus/accessibility acceptance and publication of a matching UI release remain pending; the public 0.1.6 native binary does not offer quick chat. See `quick-chat-plan.md` for the audited API contract and remaining scope. This adds explicit conversational submissions, not arbitrary execution controls or an unrestricted SDK/shell bridge.
+
 ## Verified integration and limits
 
 Integrations were checked against installed Paseo 0.11.2 and official plugin/client/protocol declarations at 0.11.1. The implementation uses owned directory snapshots, explicit terminal events and turn IDs, directory project/workspace metadata, the official agent deep-link builder, and a locally compiled AppKit child with fixed process arguments. It does not infer terminal events from idle status or invent routing fields.

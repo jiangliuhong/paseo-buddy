@@ -8,6 +8,7 @@ import path from 'node:path';
 import { companionAsset, companionDirectory, companionEnvironment, sourceSha256, ensureCompanion, startDesktopCompanion, nativePublisher } from '../build/server/desktop-companion.js';
 import { nativeSource } from '../build/server/native-source.js';
 import {parseAgentDeepLink} from '@getpaseo/protocol/agent-deep-link';
+import {randomUUID} from 'node:crypto';
 
 async function cache(t) { const root=await mkdtemp(path.join(os.tmpdir(),'buddy-native-'));t.after(()=>rm(root,{recursive:true,force:true}));return root; }
 function compiler(calls=[]) { return async(command,args,options)=>{
@@ -94,6 +95,17 @@ test('native startup waits for settings and READY before opening SDK observation
  await Promise.resolve();assert.equal(ensured,false);release();await companion.ready;
  assert.equal(typeof publishing,'function');assert.equal(options.env.PASEO_BUDDY_DISPLAY_FILE,'/private/appearance.json');assert.equal(options.shell,false);
  await companion.stop();assert.ok(stopped>=1);
+});
+
+test('quick-chat commands coalesced with READY reach the action bridge without a second launch',async()=>{
+ const request={type:'quick_chat_options',requestId:randomUUID()};const received=[];
+ const companion=startDesktopCompanion({platform:'darwin',systemRelease:'22.0.0',arch:'arm64',log(){},ensure:async()=>'/verified',
+  spawn:(_command,_args,opts)=>fakeChild(opts.signal,'READY\n'+JSON.stringify(request)+'\n'),
+  observe:()=>({done:Promise.resolve(),async stop(){}}),
+  quickChat:()=>({async handle(command){received.push(command);return {kind:'result',requestId:command.requestId,ok:true,error:null};},async stop(){}}),
+ });
+ await companion.ready;await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(received,[request]);await companion.stop();
 });
 test('disable cancels pending settings or build without spawning',async()=>{
  let calls=0;

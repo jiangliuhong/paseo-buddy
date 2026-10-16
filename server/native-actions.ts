@@ -3,18 +3,23 @@ import type { BuddyState } from "../shared/agents.js";
 import { agentKey } from "../shared/agents.js";
 import { nativeMarkReadSchema, type NativeActionResult, type NativeMarkRead } from "../shared/native-actions.js";
 import { markAgentRead } from "./agent-attention.js";
+import { quickChatCommandSchema, quickChatLimits, type QuickChatMessage } from "../shared/quick-chat.js";
+import type { QuickChatService } from "./quick-chat.js";
 
-/** The owned child may request only an explicit read action for a currently displayed completion. */
+/** The owned child can request only validated, bounded actions through the Node adapters. */
 export function nativeActionBridge(child: ChildProcess, options: {
   state: () => BuddyState;
   reply: (result: NativeActionResult) => void;
   markRead?: typeof markAgentRead;
+  quickChat?: QuickChatService;
+  quickChatReply?: (message: QuickChatMessage) => void;
 }) {
   let stopped = false;
   let buffer = Buffer.alloc(0);
   let discarding = false;
   const seen = new Set<string>();
   const pending = new Map<string, { controller: AbortController; task: Promise<void> }>();
+  const chats = new Set<Promise<void>>();
   function reply(command: NativeMarkRead, success: boolean, error: string | null) {
     if (!stopped) options.reply({ requestId: command.requestId, agentId: command.agentId, success, error });
   }
@@ -45,7 +50,8 @@ export function nativeActionBridge(child: ChildProcess, options: {
   }
   const data = (chunk: Buffer) => {
     if (stopped) return;
-    if (chunk.length > 8192) { void stop(); return; }
+    const lineLimit = options.quickChat ? quickChatLimits.inputBytes : 2048;
+    if (chunk.length > (options.quickChat ? quickChatLimits.inputBytes : 8192)) { void stop(); return; }
     if (discarding) {
       const newline = chunk.indexOf(10);
       if (newline < 0) return;
@@ -56,13 +62,31 @@ export function nativeActionBridge(child: ChildProcess, options: {
       const newline = buffer.indexOf(10);
       if (newline < 0) break;
       const line = buffer.subarray(0, newline); buffer = buffer.subarray(newline + 1);
-      if (line.length > 2048) continue;
+      if (line.length > lineLimit) continue;
       try {
-        const parsed = nativeMarkReadSchema.safeParse(JSON.parse(line.toString("utf8")));
+        const value: unknown = JSON.parse(line.toString("utf8"));
+        const chat = options.quickChat && quickChatCommandSchema.safeParse(value);
+        if (chat && chat.success && options.quickChatReply) {
+          if (chats.size >= 8) {
+            options.quickChatReply({ kind: "result", requestId: chat.data.requestId, ok: false, error: "busy" });
+          } else {
+            const task = Promise.resolve().then(async () => {
+              if (stopped) return;
+              const result = await options.quickChat!.handle(chat.data);
+              if (!stopped) options.quickChatReply?.(result);
+            }).catch(() => {
+              if (!stopped) options.quickChatReply?.({ kind: "result", requestId: chat.data.requestId, ok: false, error: "failed" });
+            }).finally(() => chats.delete(task));
+            chats.add(task);
+          }
+          continue;
+        }
+        if (line.length > 2048) continue;
+        const parsed = nativeMarkReadSchema.safeParse(value);
         if (parsed.success) receive(parsed.data);
       } catch { /* Invalid child output is never an executable command or arbitrary RPC. */ }
     }
-    if (buffer.length > 2048) { buffer = Buffer.alloc(0); discarding = true; }
+    if (buffer.length > lineLimit) { buffer = Buffer.alloc(0); discarding = true; }
   };
   child.stdout?.on("data", data);
   async function stop() {
@@ -70,8 +94,9 @@ export function nativeActionBridge(child: ChildProcess, options: {
     child.stdout?.off("data", data);
     const tasks = [...pending.values()];
     for (const { controller } of tasks) controller.abort();
-    await Promise.allSettled(tasks.map(({ task }) => task));
+    await options.quickChat?.stop();
+    await Promise.allSettled([...tasks.map(({ task }) => task), ...chats]);
     pending.clear();
   }
-  return { stop };
+  return { stop, receiveChunk: data };
 }

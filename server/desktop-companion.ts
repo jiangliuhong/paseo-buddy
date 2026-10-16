@@ -15,8 +15,10 @@ import { startLiveAgents } from "./live-agents.js";
 import type { BuddyNotification, BuddyState } from "../shared/agents.js";
 import type { NativeActionResult } from "../shared/native-actions.js";
 import { nativeActionBridge } from "./native-actions.js";
+import { createQuickChatService } from "./quick-chat.js";
+import { quickChatLimits, quickChatMessageSchema, type QuickChatMessage } from "../shared/quick-chat.js";
 
-export const companionVersion = "0.1.6-native.1";
+export const companionVersion = "0.1.7-native.1";
 const nativeRecipe = "appkit-bundle-1";
 const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -25,7 +27,7 @@ const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <key>CFBundleName</key><string>Paseo Buddy</string>
 <key>CFBundleExecutable</key><string>Paseo Buddy</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.6</string>
+<key>CFBundleShortVersionString</key><string>0.1.7</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>LSUIElement</key><true/>
@@ -160,18 +162,32 @@ export function nativePublisher(child: ChildProcess) {
   let latest: string | undefined;
   const notifications: string[] = [];
   const responses: string[] = [];
+  const chatResponses: string[] = [];
+  const chatSnapshots = new Map<string, string>();
+  let chatBytes = 0;
+  let resyncRequired = false;
   let stopped = false;
   const send = () => {
     if (stopped || waiting || !child.stdin || child.stdin.destroyed) return;
-    while (!waiting && (latest || responses.length || notifications.length)) {
-      const value = latest ?? responses.shift() ?? notifications.shift()!;
+    while (!waiting && (latest || responses.length || chatResponses.length || resyncRequired || chatSnapshots.size || notifications.length)) {
+      let chat: string | undefined;
+      if (!latest && !responses.length) {
+        chat = chatResponses.shift();
+        if (chat) chatBytes -= Buffer.byteLength(chat);
+        if (!chat && resyncRequired) { chat = '{"quickChat":{"kind":"resync_required"}}\n'; resyncRequired = false; }
+        if (!chat && chatSnapshots.size) {
+          const [key, value] = chatSnapshots.entries().next().value!;
+          chatSnapshots.delete(key); chat = value; chatBytes -= Buffer.byteLength(value);
+        }
+      }
+      const value = latest ?? responses.shift() ?? chat ?? notifications.shift()!;
       latest = undefined;
       waiting = !child.stdin.write(value);
     }
   };
   const drain = () => { waiting = false; send(); };
   child.stdin?.on("drain", drain);
-  const error = () => { stopped = true; latest = undefined; notifications.length = 0; responses.length = 0; };
+  const error = () => { stopped = true; latest = undefined; notifications.length = 0; responses.length = 0; chatResponses.length = 0; chatSnapshots.clear(); chatBytes = 0; resyncRequired = false; };
   child.stdin?.on("error", error);
   return {
     publish(state: BuddyState) {
@@ -202,8 +218,26 @@ export function nativePublisher(child: ChildProcess) {
         success: result.success, error: result.error?.slice(0, 160) ?? null } }) + "\n");
       send();
     },
+    quickChat(message: QuickChatMessage) {
+      if (stopped) return;
+      const parsed = quickChatMessageSchema.safeParse(message);
+      if (!parsed.success) { resyncRequired = true; send(); return; }
+      const serialized = JSON.stringify({ quickChat: parsed.data }) + "\n";
+      if (Buffer.byteLength(serialized) > quickChatLimits.outputBytes) { resyncRequired = true; send(); return; }
+      if (parsed.data.kind === "resync_required") resyncRequired = true;
+      else if (parsed.data.kind === "session") {
+        const key = parsed.data.session.sessionId;
+        chatBytes -= Buffer.byteLength(chatSnapshots.get(key) ?? "");
+        chatSnapshots.set(key, serialized); chatBytes += Buffer.byteLength(serialized);
+      } else { chatResponses.push(serialized); chatBytes += Buffer.byteLength(serialized); }
+      // Explicit invalidation makes any dropped response recoverable via options/resume.
+      if (chatResponses.length > 32 || chatSnapshots.size > quickChatLimits.sessions || chatBytes > 1024 * 1024) {
+        chatResponses.length = 0; chatSnapshots.clear(); chatBytes = 0; resyncRequired = true;
+      }
+      send();
+    },
     stop() {
-      stopped = true; latest = undefined; notifications.length = 0; responses.length = 0;
+      error();
       child.stdin?.off("drain", drain);
       // Pending writes can report EPIPE after stop; keep the owned pipe's error handler.
     },
@@ -224,6 +258,7 @@ export function startDesktopCompanion(options: {
   ensure?: typeof ensureCompanion;
   spawn?: typeof spawnProcess;
   observe?: typeof startLiveAgents;
+  quickChat?: typeof createQuickChatService;
   log?: (message: string) => void;
   readyTimeoutMs?: number;
 } = {}) {
@@ -234,6 +269,7 @@ export function startDesktopCompanion(options: {
   let observation: ReturnType<typeof startLiveAgents> | undefined;
   let publisher: ReturnType<typeof nativePublisher> | undefined;
   let actions: ReturnType<typeof nativeActionBridge> | undefined;
+  let startupInput = Buffer.alloc(0);
   let latestState: BuddyState = { connection: "connecting", agents: [] };
   let childStop: Promise<void> | undefined;
   let phase: "settings" | "build" | "launch" | "observe" = "settings";
@@ -270,18 +306,23 @@ export function startDesktopCompanion(options: {
         publisher?.stop(); void actions?.stop(); void observation?.stop(); options.onExit?.();
       });
       await new Promise<void>((resolve, reject) => {
-        let text = "";
+        let input = Buffer.alloc(0);
         const timer = setTimeout(() => finish(new Error("Native window did not become ready")), options.readyTimeoutMs ?? 10000);
         const data = (chunk: Buffer) => {
-          text += chunk.toString();
-          if (text === "READY\n") finish();
-          else if (text === "ALREADY_RUNNING\n") finish(new Error("Another Buddy is already running with this native cache"));
-          else if (text.length > 64) finish(new Error("Invalid native startup response"));
+          input = Buffer.concat([input, chunk]);
+          const newline = input.indexOf(10);
+          if (input.length > quickChatLimits.inputBytes + 64 || (newline < 0 && input.length > 64)) { finish(new Error("Invalid native startup response")); return; }
+          if (newline < 0) return;
+          const line = input.subarray(0, newline).toString("utf8");
+          if (line === "READY") { startupInput = input.subarray(newline + 1); finish(); }
+          else if (line === "ALREADY_RUNNING") finish(new Error("Another Buddy is already running with this native cache"));
+          else finish(new Error("Invalid native startup response"));
         };
         const exit = () => finish(new Error("Native window exited before readiness"));
         const error = () => finish(new Error("Native companion could not start"));
         const abort = () => finish(new Error("Native startup cancelled"));
         function finish(error?: Error) {
+          child?.stdout?.pause(); // Retain commands sent immediately after READY until the action bridge owns stdout.
           clearTimeout(timer); child?.stdout?.off("data", data); child?.off("exit", exit); child?.off("error", errorHandler);
           controller.signal.removeEventListener("abort", abort);
           error ? reject(error) : resolve();
@@ -294,7 +335,11 @@ export function startDesktopCompanion(options: {
       if (child.exitCode !== null || child.signalCode !== null) throw new Error("Native window exited after readiness");
       phase = "observe";
       publisher = nativePublisher(child);
-      actions = nativeActionBridge(child, { state: () => latestState, reply: publisher.actionResult });
+      const quickChat = (options.quickChat ?? createQuickChatService)({ publish: publisher.quickChat });
+      actions = nativeActionBridge(child, { state: () => latestState, reply: publisher.actionResult,
+        quickChat, quickChatReply: publisher.quickChat });
+      if (startupInput.length) actions.receiveChunk(startupInput);
+      startupInput = Buffer.alloc(0); child.stdout?.resume();
       observation = (options.observe ?? startLiveAgents)({ config: () => readPaseoConfig(), serverId: () => readPaseoServerId(),
         publish: state => { latestState = state; publisher?.publish(state); }, notify: publisher.notify });
       (options.log ?? console.log)("Paseo Buddy native AppKit window started.");

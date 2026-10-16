@@ -11,9 +11,39 @@ npm run native:start
 npm run daemon:check
 ```
 
-`check` runs TypeScript, Node state/reconnect/settings/controller/build tests and esbuild server/client bundles. It never compiles or launches a native companion. There is no standalone lint configuration. `native:check` compiles the actual embedded AppKit definitions and tests pill hit-testing, anchor geometry and decoding in a temporary executable without creating a window. The hit-testing regression covers collapsed and expanded pill positions at 0.75×, 1× and 1.5× scale; keep AppKit’s inherited hit test, which converts parent coordinates correctly after expansion. `native:build` explicitly builds the current host architecture under `build/native`; `native:start` explicitly compiles/reuses and starts an owned native process observing the selected local daemon, with explicit user-triggered mark-read actions. Ctrl-C stops it. `daemon:check` connects read-only to the selected local daemon, closes only its own SDK connection and verifies a fresh snapshot after reconnect. It prints aggregate counts, not names, paths or credentials, and neither starts agent tasks nor sends desktop notifications. It needs loopback access; native window tests additionally need a logged-in macOS desktop session. Both native developer commands authorize a local build directly; normal plugin activation only reuses a verified cache; users click 下载并启动 to download a missing cache.
+`check` runs TypeScript, Node state/reconnect/settings/controller/build tests and esbuild server/client bundles. It never compiles or launches a native companion. There is no standalone lint configuration. `native:check` compiles the actual embedded AppKit definitions and tests pill hit-testing, anchor geometry and decoding in a temporary executable without creating a window. The hit-testing regression covers collapsed and expanded pill positions at 0.75×, 1× and 1.5× scale; keep AppKit’s inherited hit test, which converts parent coordinates correctly after expansion. `native:build` explicitly builds the current host architecture under `build/native`; `native:start` explicitly compiles/reuses and starts an owned native process observing the selected local daemon, with explicit user-triggered mark-read actions and quick-chat submissions. Ctrl-C stops it. `daemon:check` connects read-only to the selected local daemon, closes only its own SDK connection and verifies a fresh snapshot after reconnect. It prints aggregate counts, not names, paths or credentials, and neither starts agent tasks nor sends desktop notifications. It needs loopback access; native window tests additionally need a logged-in macOS desktop session. Both native developer commands authorize a local build directly; normal plugin activation only reuses a verified cache; users click 下载并启动 to download a missing cache.
 
 The plugin manifest prepares runtime dependencies using `npm ci --omit=dev --ignore-scripts`. Paseo compiles the TypeScript entries itself. `npm run build` creates extra bundles under `build/plugin` for development verification; these are not downloaded by the plugin. GitHub CI checks the plugin on Linux/macOS and performs native compile/model checks on macOS. Version-tag pushes trigger the native-release workflow, which publishes both native architectures and their integrity manifests after checks pass.
+
+## Quick-chat service, native UI and API audit
+
+The Node service, strict IPC contract and embedded native launch/chat UI are implemented in 0.1.7 source. The confirmed interaction and 2026-10-16 API findings are recorded in [quick-chat-plan.md](quick-chat-plan.md). The audit checked official SDK 0.11.1 against installed Paseo 0.11.4 and successfully read the local daemon's profiles, Projects, filtered workspaces, available Providers, model/mode/feature catalogs, a bounded history sample and live timeline subscription readiness. It did not create a workspace/Agent, send a prompt, patch settings or mark attention read.
+
+```sh
+npm run runtime:build
+node scripts/check-quick-chat-api.mjs --contracts-only
+node scripts/check-quick-chat-api.mjs
+```
+
+The first audit mode checks actual SDK serialization with an injected driver and protocol schemas, without connecting. The second also requires local loopback access and uses the selected Paseo home's existing credential in Node memory. Output is limited to aggregate counts, capability flags, schema field names and fixed errors; no profile names, paths, message contents or credentials are printed. Empty installations skip unavailable samples rather than inventing data. The 45-second deadline bounds the diagnostic run. Creation and message delivery still require controlled end-to-end acceptance before the feature can be described as working.
+
+Use `config.get().config.agentProfiles` for launch profiles, preserving mode/thinking/feature values. Do not forward the raw daemon config to the native child. New workspaces omit the title and carry `firstAgentContext` for Paseo's asynchronous naming; existing workspace Agent creation must use the workspace handle to retain explicit identity. Keep `idempotencyKey`/`messageId` stable across recovery and respect outcome-unknown receipts. Do not equate a new workspace record backed by an existing directory with a new Git worktree; the planned default follows Paseo's local creation semantics.
+
+`npm test` includes service state, canonical snapshot replacement, duplicate requests/messages, creation identity recovery, unknown-delivery reconciliation, permission waits, identity changes, cancellation, bounded Unicode IPC and publisher overflow tests. They use injected clients; they never create real Agents or send real prompts. Regression coverage includes a failed first history read after reconnect with no subsequent events, and the `draftEditable` result flag issued only when creation fails before any write attempt. Native checks verify that this flag unlocks launch choices while preserving text and rotating the draft identity; unknown outcomes stay frozen for identity-preserving retry. The desktop companion instantiates the service after READY but connects only when a validated quick-chat request arrives. The native **+** button now emits the supported options/create/send/resume contract; the existing list toggle remains separate.
+
+```sh
+npm run native:check
+node scripts/check-native.mjs --render
+npm run native:build
+node scripts/preview-quick-chat.mjs
+node scripts/preview-quick-chat.mjs --no-profiles
+```
+
+`native:check` compiles the actual embedded Swift and exercises launch/chooser/session state without displaying windows. It verifies Unicode text, null workspace encoding, preserved retry identity, pending/unknown states, close retention, input selection and both profile/manual paths. Native-generated commands are parsed with the same Zod contract used by Node. `--render` additionally writes AppKit component renders under `work/native-qa` using offscreen windows, not desktop screenshots. `preview-quick-chat.mjs` opens an isolated owned native window with sample metadata and simulated replies; it reads no Paseo credential, connects to no daemon, and sends no notifications or real tasks. It uses a distinct lock and preferences suite, and Ctrl-C closes only that preview. Both native build and preview require Apple developer tools and a logged-in macOS session.
+
+The isolated window reached READY, but the current computer-use tool could not bind its accessory panel (`cgWindowNotFound`), so real-window click/focus acceptance is not claimed. Offscreen launch/chooser/conversation rendering and controller/protocol tests are the visual/model evidence for this change. Before release, manually check first-click activation, Tab/Space/Return, Escape, Chinese input-method composition, foreground-app focus during background replies, scroll preservation, light/dark mode and multiple displays/scales. Real creation, automatic naming, permission handling and continuation must be checked with an explicitly selected test Project/profile/prompt. Source/native/tag versions are 0.1.7; GitHub Release publication is still pending.
+
+The implemented service's `quick_chat_options` path was also read-only checked against the local daemon: Project/profile/Provider discovery and project-scoped workspace/model selection succeeded without forwarding raw paths. This verifies option loading, not real creation, prompt delivery or automatic naming outcomes.
 
 ## Source and APIs
 
@@ -61,7 +91,7 @@ Run `npm run check` and `npm run native:check`. Tests cover multi-host collision
 
 Right-click and Shift-F10 now use absolute screen coordinates, with layout/dragging suspended during menu tracking and the retained anchor reapplied afterward. Manually dismiss menus in collapsed/expanded modes near all display edges and on a negative-coordinate display; verify the capsule stays in place and subsequent dragging/clicking still works. Automated native checks compile the actual source and validate the surrounding anchor geometry; they do not establish real menu-event acceptance.
 
-Version 0.1.6 and its native source identity must be released together using the version-tag workflow. `npm run native:start` validates the standalone local observer only; full multi-host acceptance requires the Paseo-hosted client contribution and daemon relay.
+Version 0.1.7 and its native source identity must be released together using the version-tag workflow. `npm run native:start` runs the local observer and quick-chat source build; sending through its UI creates real local tasks only on explicit submission. Full multi-host observation acceptance requires the Paseo-hosted client contribution and daemon relay; quick-chat creation remains local-only.
 
 ## List responsiveness
 
